@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { width: 300px; font-family: Arial, sans-serif; padding: 10px; }
+    input { width: 90%; padding: 8px; margin-bottom: 10px; }
+    button { background: #4CAF50; color: white; border: none; padding: 8px 12px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h3>Virtue Setup</h3>
+  <label>Paste Google Sheet Web App URL:</label>
+  <input type="text" id="webhookUrl" placeholder="https://script.google.com/macros/s/...">
+  <button id="saveBtn">Save URL</button>
+  <p id="status" style="color: green;"></p>
+
+  <script src="popup.js"></script>
+</body>
+</html>

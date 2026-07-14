@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Virtue POC",
+  "version": "0.1",
+  "description": "Proof of Concept for Virtue Accountability",
+  "permissions": [
+    "webNavigation",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
