@@ -5,7 +5,11 @@
   "description": "Proof of Concept for Virtue Accountability",
   "permissions": [
     "webNavigation",
-    "storage"
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://script.google.com/*"
   ],
   "background": {
     "service_worker": "background.js"
