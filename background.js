@@ -2,12 +2,27 @@ const BASE_URL = "https://script.google.com/macros/s/";
 const SCRIPT_ID = "AKfycbyMZt0XdisYwfaSl5ChsKWIGXNIIt9hoj8OXNLiDWG3pC7v5GSQWVg7aKtYhTZ1p-tt/exec";
 const GOOGLE_SCRIPT_URL = BASE_URL + SCRIPT_ID;
 
+// Helper function to get clean formatted time
+function getCleanTimestamp() {
+  const options = { 
+    weekday: 'short', 
+    year: 'numeric', 
+    month: 'short', 
+    day: 'numeric', 
+    hour: 'numeric', 
+    minute: '2-digit', 
+    second: '2-digit', 
+    hour12: true 
+  };
+  return new Date().toLocaleString('en-US', options);
+}
+
 // ==========================================
 // 1. INITIALIZE BACKGROUND ALARMS (Task 1.3)
 // ==========================================
 chrome.runtime.onInstalled.addListener(() => {
-  // Sets a timer to flush our local storage logs to Google Sheets every 3 minutes
-  chrome.alarms.create("flushBuffer", { periodInMinutes: 3 });
+  // Sets a timer to flush our local storage logs to Google Sheets every 1 minute
+  chrome.alarms.create("flushBuffer", { periodInMinutes: 1 });
 });
 
 // ==========================================
@@ -57,25 +72,38 @@ function flushBuffer() {
     if (buffer.length === 0) return;
 
     // Filter out rapid accidental duplicate events
-    const uniqueLogs = Array.from(new Set(buffer.map(a => a.url)))
+    let uniqueLogs = Array.from(new Set(buffer.map(a => a.url)))
       .map(url => buffer.find(a => a.url === url));
 
-    fetch(GOOGLE_SCRIPT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(uniqueLogs)
-    })
-    .then(() => {
-      console.log("Virtue batch sent successfully!");
-      chrome.storage.local.set({ logBuffer: [] }); // Clear buffer upon success
-    })
-    .catch(err => console.error("Virtue batch network error:", err));
+    // Smart Permission Gatekeeper: Check incognito access status before sending
+    chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
+      if (!isAllowed) {
+        // Force the alert text into BOTH URL and Title slots so it prints no matter what
+        uniqueLogs.unshift({
+          url: "[ALERT] Incognito Tracking is DISABLED in settings!",
+          title: "[ALERT] Incognito Tracking is DISABLED in settings!",
+          searchQuery: null,
+          timestamp: getCleanTimestamp()
+        });
+      }
+
+      fetch(GOOGLE_SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(uniqueLogs)
+      })
+      .then(() => {
+        console.log("Virtue batch sent successfully!");
+        chrome.storage.local.set({ logBuffer: [] }); // Clear buffer upon success
+      })
+      .catch(err => console.error("Virtue batch network error:", err));
+    });
   });
 }
 
 // ==========================================
-// 4. MAIN EVENT LISTENERS (Task 1.2)
+// 4. MAIN EVENT LISTENERS (Task 1.2 & Incognito)
 // ==========================================
 function processNavigation(url, tabId) {
   // Protocol Gatekeeper: Instantly discard non-web traffic (chrome://, about:blank, etc.)
@@ -84,27 +112,20 @@ function processNavigation(url, tabId) {
   }
 
   chrome.tabs.get(tabId, (tab) => {
-    const title = tab ? tab.title : "";
-    const searchQuery = extractSearchQuery(url); // <-- Fixed: Search engine words restored!
+    let title = tab ? tab.title : "";
+    const searchQuery = extractSearchQuery(url);
+    const cleanLocalTime = getCleanTimestamp();
 
-    // Formats time exactly like: "Wed, Jul 15, 2026, 10:28:45 PM"
-    const options = { 
-      weekday: 'short', 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric', 
-      hour: 'numeric', 
-      minute: '2-digit', 
-      second: '2-digit', // <-- Added: Seconds included for tracking accuracy
-      hour12: true 
-    };
-    const cleanLocalTime = new Date().toLocaleString('en-US', options);
+    // If running inside incognito scope, prefix the title so it stands out in the sheet logs
+    if (tab && tab.incognito) {
+      title = `[INCOGNITO] ${title}`;
+    }
 
     const payload = {
       url: url,
       title: title,
       searchQuery: searchQuery,
-      timestamp: cleanLocalTime // <-- Using the simple, plain-English format
+      timestamp: cleanLocalTime
     };
     
     addToBuffer(payload);
