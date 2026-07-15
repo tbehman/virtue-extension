@@ -78,11 +78,16 @@ function flushBuffer() {
 // 4. MAIN EVENT LISTENERS (Task 1.2)
 // ==========================================
 function processNavigation(url, tabId) {
+  // Protocol Gatekeeper: Instantly discard non-web traffic (chrome://, about:blank, etc.)
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    return;
+  }
+
   chrome.tabs.get(tabId, (tab) => {
     const title = tab ? tab.title : "";
     const searchQuery = extractSearchQuery(url); // <-- Fixed: Search engine words restored!
 
-    // Formats time exactly like: "Wed, Jul 15, 2026, 4:23 PM"
+    // Formats time exactly like: "Wed, Jul 15, 2026, 10:28:45 PM"
     const options = { 
       weekday: 'short', 
       year: 'numeric', 
@@ -90,6 +95,7 @@ function processNavigation(url, tabId) {
       day: 'numeric', 
       hour: 'numeric', 
       minute: '2-digit', 
+      second: '2-digit', // <-- Added: Seconds included for tracking accuracy
       hour12: true 
     };
     const cleanLocalTime = new Date().toLocaleString('en-US', options);
