@@ -18,11 +18,21 @@ function getCleanTimestamp() {
 }
 
 // ==========================================
-// 1. INITIALIZE BACKGROUND ALARMS (Task 1.3)
+// 1. INITIALIZE BACKGROUND ALARMS & SETTINGS
 // ==========================================
 chrome.runtime.onInstalled.addListener(() => {
   // Sets a timer to flush our local storage logs to Google Sheets every 1 minute
   chrome.alarms.create("flushBuffer", { periodInMinutes: 1 });
+
+  // Initialize core settings default state so you don't instantly lock yourself out of the web
+  chrome.storage.local.get(["filterMode", "customWhitelist"], (result) => {
+    if (!result.filterMode) {
+      chrome.storage.local.set({ 
+        filterMode: "whitelist", // Options: "off", "whitelist", "blacklist"
+        customWhitelist: ["google.com", "bing.com", "duckduckgo.com", "pcci.edu"] 
+      });
+    }
+  });
 });
 
 // ==========================================
@@ -78,7 +88,6 @@ function flushBuffer() {
     // Smart Permission Gatekeeper: Check incognito access status before sending
     chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
       if (!isAllowed) {
-        // Force the alert text into BOTH URL and Title slots so it prints no matter what
         uniqueLogs.unshift({
           url: "[ALERT] Incognito Tracking is DISABLED in settings!",
           title: "[ALERT] Incognito Tracking is DISABLED in settings!",
@@ -103,10 +112,54 @@ function flushBuffer() {
 }
 
 // ==========================================
-// 4. MAIN EVENT LISTENERS (Task 1.2 & Incognito)
+// 4. MAIN EVENT LISTENERS (Navigation & Whitelist Guard)
 // ==========================================
+
+// Whitelist Interceptor Engine: Catches requests BEFORE they load
+chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+  if (details.frameId !== 0) return; // Ignore background sub-frames/ads
+  
+  const urlStr = details.url;
+  // Protocol Gatekeeper: Let internal browser pages (chrome://) pass safely
+  if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) {
+    return;
+  }
+
+  chrome.storage.local.get({ filterMode: "off", customWhitelist: [] }, (settings) => {
+    if (settings.filterMode !== "whitelist") return;
+
+    try {
+      const url = new URL(urlStr);
+      const hostname = url.hostname.toLowerCase();
+      
+      // Check if current site matches or ends with any domain in our whitelist array
+      const isWhitelisted = settings.customWhitelist.some(domain => {
+        const cleanDomain = domain.toLowerCase().trim();
+        return hostname === cleanDomain || hostname.endsWith("." + cleanDomain);
+      });
+
+      if (!isWhitelisted) {
+        // Generate the secure internal path to our local block page
+        const blockPageUrl = chrome.runtime.getURL("blocked.html");
+        
+        // 1. Instantly drop the hammer and redirect to your custom block file
+        chrome.tabs.update(details.tabId, { url: blockPageUrl });
+        
+        // 2. Write a clear, tamper-proof entry to the log sheet buffer
+        addToBuffer({
+          url: `[BLOCKED] ${urlStr}`,
+          title: "[SECURITY ALERT] Attempted access outside Whitelist boundaries",
+          searchQuery: null,
+          timestamp: getCleanTimestamp()
+        });
+      }
+    } catch (e) {
+      console.error("Whitelist parser engine error:", e);
+    }
+  });
+});
+
 function processNavigation(url, tabId) {
-  // Protocol Gatekeeper: Instantly discard non-web traffic (chrome://, about:blank, etc.)
   if (!url.startsWith("http://") && !url.startsWith("https://")) {
     return;
   }
@@ -116,7 +169,6 @@ function processNavigation(url, tabId) {
     const searchQuery = extractSearchQuery(url);
     const cleanLocalTime = getCleanTimestamp();
 
-    // If running inside incognito scope, prefix the title so it stands out in the sheet logs
     if (tab && tab.incognito) {
       title = `[INCOGNITO] ${title}`;
     }

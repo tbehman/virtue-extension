@@ -1,18 +1,168 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
   <style>
-    body { width: 300px; font-family: Arial, sans-serif; padding: 10px; }
-    input { width: 90%; padding: 8px; margin-bottom: 10px; }
-    button { background: #4CAF50; color: white; border: none; padding: 8px 12px; cursor: pointer; }
+    body { 
+      width: 320px; 
+      font-family: Arial, sans-serif; 
+      padding: 15px; 
+      background-color: #f9f9f9;
+      color: #333;
+    }
+    h3 { 
+      margin-top: 0; 
+      color: #2e7d32; 
+      border-bottom: 2px solid #e0e0e0;
+      padding-bottom: 6px;
+    }
+    .section {
+      margin-bottom: 18px;
+    }
+    label, .list-title { 
+      font-size: 12px; 
+      font-weight: bold; 
+      color: #555; 
+      display: block;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+    input[type="text"], select { 
+      width: 95%; 
+      padding: 8px; 
+      border: 1px solid #ccc; 
+      border-radius: 4px;
+      outline: none;
+      box-sizing: border-box;
+    }
+    input[type="text"]:focus, select:focus {
+      border-color: #4CAF50;
+    }
+    .input-group {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .input-group input[type="text"] {
+      flex: 1;
+      width: auto;
+    }
+    button { 
+      background: #4CAF50; 
+      color: white; 
+      border: none; 
+      padding: 8px 12px; 
+      cursor: pointer; 
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    button:hover { 
+      background: #45a049; 
+    }
+    #status { 
+      font-size: 13px; 
+      margin-top: 6px; 
+      font-weight: bold;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 4px 0 0 0;
+      max-height: 140px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: white;
+    }
+    li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 10px;
+      border-bottom: 1px solid #eee;
+      font-size: 13px;
+    }
+    li:last-child {
+      border-bottom: none;
+    }
+    .delete-btn {
+      color: #c62828;
+      background: none;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-weight: normal;
+    }
+    .delete-btn:hover {
+      background-color: #ffebee;
+    }
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      font-size: 14px;
+    }
+    /* Simple hidden helper */
+    .hidden {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
-  <h3>Virtue Setup</h3>
-  <label>Paste Google Sheet Web App URL:</label>
-  <input type="text" id="webhookUrl" placeholder="https://script.google.com/macros/s/...">
-  <button id="saveBtn">Save URL</button>
-  <p id="status" style="color: green;"></p>
+  <h3>🛡️ Virtue Control Panel</h3>
+
+  <!-- Section 1: Google Sheet URL -->
+  <div class="section">
+    <label>Google Sheet Web App URL:</label>
+    <input type="text" id="webhookUrl" placeholder="https://script.google.com/.../exec">
+    <div style="margin-top: 6px;">
+      <button id="saveBtn">Save URL</button>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <!-- Section 2: Master Mode Switcher -->
+  <div class="section">
+    <label>Active Filtering Strategy:</label>
+    <select id="filterModeSelect">
+      <option value="whitelist">🛡️ Whitelist Mode (Strict Enforce)</option>
+      <option value="blacklist">🚫 Blacklist Mode (Block Categories)</option>
+    </select>
+  </div>
+
+  <!-- Section 3: The Whitelist UI Panel -->
+  <div class="section" id="whitelistPanel">
+    <div class="list-title">Allowed Domains</div>
+    <div class="input-group">
+      <input type="text" id="domainInput" placeholder="e.g., wikipedia.org">
+      <button id="addBtn">Add</button>
+    </div>
+    <ul id="whitelistView"></ul>
+  </div>
+
+  <!-- Section 4: The Blacklist UI Panel -->
+  <div class="section hidden" id="blacklistPanel">
+    <div class="list-title">Category Filters</div>
+    <div class="toggle-row">
+      <span>🔞 Explicit Content</span>
+      <input type="checkbox" id="explicitToggle">
+    </div>
+    <div class="toggle-row">
+      <span>🎰 Gambling</span>
+      <input type="checkbox" id="gamblingToggle">
+    </div>
+    <div class="toggle-row">
+      <span>⚠️ Violence & Gore</span>
+      <input type="checkbox" id="violenceToggle">
+    </div>
+    
+    <div class="list-title" style="margin-top: 12px;">Custom Blocked Domains</div>
+    <div class="input-group">
+      <input type="text" id="blacklistInput" placeholder="e.g., wastefulsite.com">
+      <button id="addBlacklistBtn">Block</button>
+    </div>
+    <ul id="blacklistView"></ul>
+  </div>
 
   <script src="popup.js"></script>
 </body>
