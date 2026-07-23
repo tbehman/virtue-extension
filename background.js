@@ -156,6 +156,7 @@ function verifyAndAppendLogs(sheetId, token, rows) {
     headers: { "Authorization": `Bearer ${token}` }
   })
   .then(res => {
+    // Catch expired OAuth token immediately
     if (res.status === 401) {
       refreshAuthToken((newToken) => { verifyAndAppendLogs(sheetId, newToken, rows); });
       return null;
@@ -163,6 +164,8 @@ function verifyAndAppendLogs(sheetId, token, rows) {
     return res.json();
   })
   .then(file => {
+    if (!file) return; // Token was refreshed, loop restarted
+
     if (file && file.id && !file.trashed) {
       appendLogsToSpreadsheet(sheetId, token, rows);
     } else if (file) {
@@ -172,8 +175,8 @@ function verifyAndAppendLogs(sheetId, token, rows) {
       });
     }
   })
-  .catch(() => {
-    appendLogsToSpreadsheet(sheetId, token, rows);
+  .catch((err) => {
+    console.warn("Drive verification error:", err);
   });
 }
 
