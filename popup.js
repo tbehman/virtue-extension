@@ -1,170 +1,341 @@
 document.addEventListener("DOMContentLoaded", () => {
-  // Elements for URL Management
-  const webhookUrlInput = document.getElementById('webhookUrl');
-  const saveBtn = document.getElementById('saveBtn');
-  const status = document.getElementById('status');
+  // Screens
+  const setupScreen = document.getElementById("setupScreen");
+  const dashboardScreen = document.getElementById("dashboardScreen");
 
-  // Strategy Mode Selector
-  const filterModeSelect = document.getElementById("filterModeSelect");
-  const whitelistPanel = document.getElementById("whitelistPanel");
-  const blacklistPanel = document.getElementById("blacklistPanel");
+  // Onboarding Inputs
+  const partnerEmailInput = document.getElementById("partnerEmailInput");
+  const masterPinInput = document.getElementById("masterPinInput");
+  const authGoogleBtn = document.getElementById("authGoogleBtn");
+  const status = document.getElementById("status");
 
-  // Whitelist Elements
+  // Dashboard Header & Status Elements
+  const syncBadge = document.getElementById("syncBadge");
+  const partnerDisplayEmail = document.getElementById("partnerDisplayEmail");
+  const sheetStatusContainer = document.getElementById("sheetStatusContainer");
+  const sheetStatusText = document.getElementById("sheetStatusText");
+  const viewSheetLink = document.getElementById("viewSheetLink");
+
+  // Dynamic Filtering UI Elements
+  const modeToggleContainer = document.getElementById("modeToggleContainer");
+  const modeBlocklistBtn = document.getElementById("modeBlocklistBtn");
+  const modeWhitelistBtn = document.getElementById("modeWhitelistBtn");
+  const domainSectionTitle = document.getElementById("domainSectionTitle");
+  const domainSectionSubtext = document.getElementById("domainSectionSubtext");
+  const domainContainer = document.getElementById("domainContainer");
+  const editDomainRow = document.getElementById("editDomainRow");
   const domainInput = document.getElementById("domainInput");
-  const addBtn = document.getElementById("addBtn");
-  const whitelistView = document.getElementById("whitelistView");
+  const addDomainBtn = document.getElementById("addDomainBtn");
+  const domainView = document.getElementById("domainView");
 
-  // Blacklist Elements
-  const blacklistInput = document.getElementById("blacklistInput");
-  const addBlacklistBtn = document.getElementById("addBlacklistBtn");
-  const blacklistView = document.getElementById("blacklistView");
-  const explicitToggle = document.getElementById("explicitToggle");
-  const gamblingToggle = document.getElementById("gamblingToggle");
-  const violenceToggle = document.getElementById("violenceToggle");
+  // Management & Unlock Controls
+  const managementRow = document.getElementById("managementRow");
+  const recreateSheetBtn = document.getElementById("recreateSheetBtn");
+  const lockActionBtn = document.getElementById("lockActionBtn");
+  const pinPromptArea = document.getElementById("pinPromptArea");
+  const verifyPinInput = document.getElementById("verifyPinInput");
+  const submitPinBtn = document.getElementById("submitPinBtn");
+  const cancelPinBtn = document.getElementById("cancelPinBtn");
+  const forgotPinLink = document.getElementById("forgotPinLink");
+  const forgotPinModal = document.getElementById("forgotPinModal");
+  const closeForgotPinBtn = document.getElementById("closeForgotPinBtn");
+
+  let isUnlocked = false;
+  let cachedPin = "";
+  let activeFilterMode = "blocklist"; // 'blocklist' or 'whitelist'
 
   // ==========================================
-  // 1. GOOGLE SHEET URL ENGINE
+  // 1. STATE INITIALIZATION ENGINE
   // ==========================================
-  saveBtn.addEventListener('click', () => {
-    const url = webhookUrlInput.value.trim();
-    chrome.storage.local.set({ webhookUrl: url }, () => {
-      status.style.color = "green";
-      status.textContent = ' Saved!';
-      setTimeout(() => { status.textContent = ''; }, 2000);
+  function init() {
+    chrome.storage.local.get([
+      "authToken",
+      "partnerEmail",
+      "masterPin",
+      "filterMode",
+      "spreadsheetId",
+      "dashboardPreviewUrl"
+    ], (data) => {
+      cachedPin = data.masterPin;
+      activeFilterMode = data.filterMode || "blocklist";
+
+      if (!data.authToken || !cachedPin) {
+        setupScreen.classList.remove("hidden");
+        dashboardScreen.classList.add("hidden");
+      } else {
+        setupScreen.classList.add("hidden");
+        dashboardScreen.classList.remove("hidden");
+        
+        partnerDisplayEmail.textContent = (data.partnerEmail && data.partnerEmail.trim() !== "") 
+          ? data.partnerEmail 
+          : "No Partner Email Set";
+          
+        // Render Connection Status & Preview Portal Link
+        if (data.spreadsheetId) {
+          sheetStatusContainer.style.borderLeft = "4px solid #1a73e8";
+          sheetStatusText.textContent = "🟢 Telemetry Active & Dashboard Linked";
+          sheetStatusText.style.color = "#1a73e8";
+          
+          const previewUrl = data.dashboardPreviewUrl || `https://docs.google.com/spreadsheets/d/${data.spreadsheetId}/preview`;
+          viewSheetLink.href = previewUrl;
+          viewSheetLink.classList.remove("hidden");
+        } else {
+          sheetStatusContainer.style.borderLeft = "4px solid #b06000";
+          sheetStatusText.textContent = "🟡 Initializing telemetry and linking portal...";
+          sheetStatusText.style.color = "#b06000";
+          viewSheetLink.classList.add("hidden");
+        }
+
+        updateFilterModeUI();
+        applyUIVisibilityState();
+        loadDomainList();
+      }
     });
-  });
-
-  // ==========================================
-  // 2. STRATEGY MODE ENGINE (Dynamic Panel Swap)
-  // ==========================================
-  filterModeSelect.addEventListener("change", () => {
-    const selectedMode = filterModeSelect.value;
-    chrome.storage.local.set({ filterMode: selectedMode }, () => {
-      updatePanelVisibility(selectedMode);
-    });
-  });
-
-  function updatePanelVisibility(mode) {
-    if (mode === "whitelist") {
-      whitelistPanel.classList.remove("hidden");
-      blacklistPanel.classList.add("hidden");
-      loadWhitelist();
-    } else {
-      whitelistPanel.classList.add("hidden");
-      blacklistPanel.classList.remove("hidden");
-      loadBlacklist();
-      loadCategoryToggles();
-    }
   }
 
   // ==========================================
-  // 3. WHITELIST PANEL ENGINE
+  // 2. INITIAL ONBOARDING & AUTHENTICATION
   // ==========================================
-  function loadWhitelist() {
-    chrome.storage.local.get({ customWhitelist: [] }, (result) => {
-      whitelistView.innerHTML = "";
-      result.customWhitelist.forEach((domain) => {
+  authGoogleBtn.addEventListener("click", () => {
+    const email = partnerEmailInput.value.trim();
+    const pin = masterPinInput.value.trim();
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      status.style.color = "#d93025";
+      status.textContent = "Please enter a valid partner email address.";
+      return;
+    }
+
+    if (!/^\d{4}$/.test(pin)) {
+      status.style.color = "#d93025";
+      status.textContent = "Master PIN must be exactly 4 digits.";
+      return;
+    }
+
+    status.style.color = "#4285F4";
+    status.textContent = "Authenticating security credentials...";
+    authGoogleBtn.disabled = true;
+
+    chrome.identity.getAuthToken({ interactive: true }, (token) => {
+      if (chrome.runtime.lastError || !token) {
+        status.style.color = "#d93025";
+        status.textContent = "Connection failed: " + (chrome.runtime.lastError?.message || "No service response");
+        authGoogleBtn.disabled = false;
+        return;
+      }
+
+      chrome.storage.local.set({ 
+        authToken: token,
+        partnerEmail: email,
+        masterPin: pin,
+        filterMode: "blocklist"
+      }, () => {
+        authGoogleBtn.disabled = false;
+        init();
+      });
+    });
+  });
+
+  // ==========================================
+  // 3. SEGMENTED FILTER MODE HANDLERS
+  // ==========================================
+  function updateFilterModeUI() {
+    if (activeFilterMode === "whitelist") {
+      modeWhitelistBtn.classList.add("active");
+      modeBlocklistBtn.classList.remove("active");
+      domainSectionTitle.textContent = "🏰 Whitelist Only (Library Mode)";
+      domainSectionSubtext.textContent = "All websites blocked EXCEPT explicitly added domains.";
+      domainInput.placeholder = "e.g., wikipedia.org";
+    } else {
+      modeBlocklistBtn.classList.add("active");
+      modeWhitelistBtn.classList.remove("active");
+      domainSectionTitle.textContent = "🚫 Custom Blocklist";
+      domainSectionSubtext.textContent = "Explicitly listed domains will be intercepted.";
+      domainInput.placeholder = "e.g., website.com";
+    }
+  }
+
+  modeBlocklistBtn.addEventListener("click", () => {
+    if (!isUnlocked) return;
+    activeFilterMode = "blocklist";
+    chrome.storage.local.set({ filterMode: "blocklist" }, () => {
+      updateFilterModeUI();
+      loadDomainList();
+    });
+  });
+
+  modeWhitelistBtn.addEventListener("click", () => {
+    if (!isUnlocked) return;
+    activeFilterMode = "whitelist";
+    chrome.storage.local.set({ filterMode: "whitelist" }, () => {
+      updateFilterModeUI();
+      loadDomainList();
+    });
+  });
+
+  // ==========================================
+  // 4. UNLOCK & PIN SECURITY HANDLERS
+  // ==========================================
+  function applyUIVisibilityState() {
+    if (isUnlocked) {
+      lockActionBtn.classList.add("hidden");
+      pinPromptArea.classList.add("hidden");
+      modeToggleContainer.classList.remove("hidden");
+      editDomainRow.classList.remove("hidden");
+      managementRow.classList.remove("hidden");
+      domainContainer.classList.remove("disabled-view");
+    } else {
+      lockActionBtn.classList.remove("hidden");
+      lockActionBtn.textContent = "🔧 Unlock Settings";
+      pinPromptArea.classList.add("hidden");
+      modeToggleContainer.classList.add("hidden");
+      editDomainRow.classList.add("hidden");
+      managementRow.classList.add("hidden");
+      domainContainer.classList.add("disabled-view");
+    }
+  }
+
+  lockActionBtn.addEventListener("click", () => {
+    lockActionBtn.classList.add("hidden");
+    pinPromptArea.classList.remove("hidden");
+    verifyPinInput.value = "";
+    verifyPinInput.focus();
+  });
+
+  cancelPinBtn.addEventListener("click", () => {
+    pinPromptArea.classList.add("hidden");
+    lockActionBtn.classList.remove("hidden");
+  });
+
+  submitPinBtn.addEventListener("click", () => {
+    const inputPin = verifyPinInput.value.trim();
+    if (inputPin === cachedPin) {
+      isUnlocked = true;
+      verifyPinInput.value = "";
+      applyUIVisibilityState();
+      loadDomainList();
+    } else {
+      alert("Incorrect 4-Digit Master PIN.");
+    }
+  });
+
+  // Forgot PIN Modal Trigger
+  forgotPinLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    forgotPinModal.classList.remove("hidden");
+  });
+
+  closeForgotPinBtn.addEventListener("click", () => {
+    forgotPinModal.classList.add("hidden");
+  });
+
+  // ==========================================
+  // 5. DOMAIN LIST MANAGEMENT (Blocklist & Whitelist)
+  // ==========================================
+  function loadDomainList() {
+    const storageKey = activeFilterMode === "whitelist" ? "customWhitelist" : "customBlacklist";
+    
+    chrome.storage.local.get({ [storageKey]: [] }, (result) => {
+      const currentList = result[storageKey] || [];
+      domainView.innerHTML = "";
+      
+      if (currentList.length === 0) {
+        const emptyLi = document.createElement("li");
+        emptyLi.style.color = "#80868b";
+        emptyLi.style.fontStyle = "italic";
+        emptyLi.textContent = activeFilterMode === "whitelist" ? "No whitelisted domains added." : "No custom blocklist domains added.";
+        domainView.appendChild(emptyLi);
+        return;
+      }
+
+      currentList.forEach((domain) => {
         const li = document.createElement("li");
         li.textContent = domain;
-        const delBtn = document.createElement("button");
-        delBtn.textContent = "Remove";
-        delBtn.className = "delete-btn";
-        delBtn.addEventListener("click", () => removeDomain(domain, true));
-        li.appendChild(delBtn);
-        whitelistView.appendChild(li);
+        if (isUnlocked) {
+          const delBtn = document.createElement("button");
+          delBtn.textContent = "×";
+          delBtn.className = "delete-btn";
+          delBtn.addEventListener("click", () => removeDomain(domain, storageKey));
+          li.appendChild(delBtn);
+        }
+        domainView.appendChild(li);
       });
     });
   }
 
-  function addDomain(isWhitelist) {
-    const inputEl = isWhitelist ? domainInput : blacklistInput;
-    const storageKey = isWhitelist ? "customWhitelist" : "customBlacklist";
-    const rawInput = inputEl.value.trim().toLowerCase();
+  function addDomain() {
+    const rawInput = domainInput.value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     if (!rawInput) return;
 
-    let cleanDomain = rawInput;
-    try {
-      if (rawInput.startsWith("http://") || rawInput.startsWith("https://")) {
-        cleanDomain = new URL(rawInput).hostname;
-      }
-    } catch (e) {}
+    const storageKey = activeFilterMode === "whitelist" ? "customWhitelist" : "customBlacklist";
 
     chrome.storage.local.get({ [storageKey]: [] }, (result) => {
-      const currentList = result[storageKey];
-      if (!currentList.includes(cleanDomain)) {
-        currentList.push(cleanDomain);
+      const currentList = result[storageKey] || [];
+      if (!currentList.includes(rawInput)) {
+        currentList.push(rawInput);
         chrome.storage.local.set({ [storageKey]: currentList }, () => {
-          inputEl.value = "";
-          isWhitelist ? loadWhitelist() : loadBlacklist();
+          domainInput.value = "";
+          loadDomainList();
         });
       }
     });
   }
 
-  function removeDomain(domainToRemove, isWhitelist) {
-    const storageKey = isWhitelist ? "customWhitelist" : "customBlacklist";
+  function removeDomain(domainToRemove, storageKey) {
     chrome.storage.local.get({ [storageKey]: [] }, (result) => {
-      const updatedList = result[storageKey].filter(d => d !== domainToRemove);
+      const updatedList = (result[storageKey] || []).filter(d => d !== domainToRemove);
       chrome.storage.local.set({ [storageKey]: updatedList }, () => {
-        isWhitelist ? loadWhitelist() : loadBlacklist();
+        loadDomainList();
       });
     });
   }
 
+  addDomainBtn.addEventListener("click", addDomain);
+
   // ==========================================
-  // 4. BLACKLIST PANEL ENGINE
+  // 6. DASHBOARD RELINK & RE-USE HANDLER
   // ==========================================
-  function loadBlacklist() {
-    chrome.storage.local.get({ customBlacklist: [] }, (result) => {
-      blacklistView.innerHTML = "";
-      result.customBlacklist.forEach((domain) => {
-        const li = document.createElement("li");
-        li.textContent = domain;
-        const delBtn = document.createElement("button");
-        delBtn.textContent = "Remove";
-        delBtn.className = "delete-btn";
-        delBtn.addEventListener("click", () => removeDomain(domain, false));
-        li.appendChild(delBtn);
-        blacklistView.appendChild(li);
+  recreateSheetBtn.addEventListener("click", () => {
+    if (confirm("Reset connection status and verify accountability portal link?")) {
+      recreateSheetBtn.disabled = true;
+      recreateSheetBtn.textContent = "⏳ Verifying Connection...";
+      sheetStatusText.textContent = "⏳ Re-checking Google Drive asset state...";
+      sheetStatusText.style.color = "#b06000";
+
+      chrome.storage.local.get(["authToken"], (res) => {
+        const oldToken = res.authToken;
+        
+        // Remove active token from identity cache to guarantee fresh authorization handshake
+        if (oldToken) {
+          chrome.identity.removeCachedAuthToken({ token: oldToken }, () => {
+            triggerRelinkHandshake();
+          });
+        } else {
+          triggerRelinkHandshake();
+        }
       });
-    });
-  }
-
-  function loadCategoryToggles() {
-    chrome.storage.local.get({
-      filterExplicit: false,
-      filterGambling: false,
-      filterViolence: false
-    }, (result) => {
-      explicitToggle.checked = result.filterExplicit;
-      gamblingToggle.checked = result.filterGambling;
-      violenceToggle.checked = result.filterViolence;
-    });
-  }
-
-  // Save category toggles on click
-  const bindToggle = (element, storageKey) => {
-    element.addEventListener("change", () => {
-      chrome.storage.local.set({ [storageKey]: element.checked });
-    });
-  };
-  bindToggle(explicitToggle, "filterExplicit");
-  bindToggle(gamblingToggle, "filterGambling");
-  bindToggle(violenceToggle, "filterViolence");
-
-  // ==========================================
-  // 5. INITIALIZATION RULES
-  // ==========================================
-  addBtn.addEventListener("click", () => addDomain(true));
-  domainInput.addEventListener("keypress", (e) => { if (e.key === "Enter") addDomain(true); });
-
-  addBlacklistBtn.addEventListener("click", () => addDomain(false));
-  blacklistInput.addEventListener("keypress", (e) => { if (e.key === "Enter") addDomain(false); });
-
-  // Load configuration base state on window open
-  chrome.storage.local.get({ webhookUrl: '', filterMode: 'whitelist' }, (data) => {
-    if (data.webhookUrl) webhookUrlInput.value = data.webhookUrl;
-    filterModeSelect.value = data.filterMode;
-    updatePanelVisibility(data.filterMode);
+    }
   });
+
+  function triggerRelinkHandshake() {
+    chrome.identity.getAuthToken({ interactive: true }, (newToken) => {
+      if (chrome.runtime.lastError || !newToken) {
+        alert("Authentication error: Please check your Google Account status.");
+        recreateSheetBtn.disabled = false;
+        recreateSheetBtn.textContent = "🔄 Reset & Re-link Dashboard Portal";
+        init();
+        return;
+      }
+
+      chrome.storage.local.set({ authToken: newToken }, () => {
+        recreateSheetBtn.disabled = false;
+        recreateSheetBtn.textContent = "🔄 Reset & Re-link Dashboard Portal";
+        alert("Connection re-authenticated successfully!");
+        location.reload();
+      });
+    });
+  }
+
+  init();
 });

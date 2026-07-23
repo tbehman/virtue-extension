@@ -1,21 +1,40 @@
 {
   "manifest_version": 3,
-  "name": "Virtue POC",
-  "version": "0.1",
-  "description": "Proof of Concept for Virtue Accountability",
+  "name": "Virtue Accountability",
+  "version": "1.0",
+  "description": "Transparent web accountability and dynamic search telemetry using Google Sheets.",
   "permissions": [
     "webNavigation",
     "storage",
     "tabs",
-    "alarms"
+    "alarms",
+    "declarativeNetRequest",
+    "identity"
   ],
   "host_permissions": [
-    "https://script.google.com/*"
+    "https://*/*",
+    "http://*/*",
+    "https://www.googleapis.com/*",
+    "https://sheets.googleapis.com/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "action": {
     "default_popup": "popup.html"
-  }
+  },
+  "oauth2": {
+    "client_id": "369511086314-iscotke4957avqtei6dr7j1mpkn613oe.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/drive.file"
+    ]
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["blocked.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

@@ -1,0 +1,119 @@
+body {
+  width: 340px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: #f8f9fa;
+  margin: 0;
+  padding: 0;
+  color: #212529;
+}
+
+.screen {
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.hidden { display: none !important; }
+
+/* Headers */
+.header h2 { margin: 0 0 5px 0; font-size: 20px; color: #198754; }
+.subtitle { margin: 0 0 20px 0; font-size: 13px; color: #6c757d; }
+
+.header-dashboard {
+  background: #ffffff;
+  padding: 15px;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+  margin-bottom: 15px;
+  border: 1px solid #e9ecef;
+}
+
+.title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.title-row h2 { margin: 0; font-size: 22px; color: #198754; font-weight: 700; }
+.partner-display { margin: 8px 0 0 0; font-size: 13px; color: #495057; }
+
+/* Badges & Lists */
+.badge {
+  background-color: #e8f5e9;
+  color: #1b5e20;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.section { margin-bottom: 20px; }
+.section h3 { font-size: 12px; font-weight: 700; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+
+.protection-list { list-style: none; padding: 0; margin: 0; }
+.protection-list li { font-size: 14px; padding: 6px 0; color: #2e7d32; display: flex; align-items: center; }
+.protection-list .icon { margin-right: 8px; font-weight: bold; }
+
+/* Inputs & Form Groups */
+.form-group { margin-bottom: 15px; }
+.form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: #495057; }
+
+input[type="text"], input[type="password"], input[type="email"], select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ced4da;
+  border-radius: 8px;
+  box-sizing: border-box;
+  font-size: 14px;
+  background-color: #fff;
+}
+
+input:disabled, select:disabled {
+  background-color: #e9ecef !important;
+  color: #6c757d;
+  cursor: not-allowed;
+}
+
+.inline-input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+
+/* Domain List */
+.domain-list { list-style: none; padding: 0; margin: 0; max-height: 120px; overflow-y: auto; }
+.domain-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  border: 1px solid #e9ecef;
+}
+
+/* Buttons */
+.btn {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  width: 100%;
+  text-align: center;
+}
+
+.btn-primary { background-color: #198754; color: white; }
+.btn-primary:hover { background-color: #157347; }
+.btn-secondary { background-color: #6c757d; color: white; width: auto; }
+.btn-outline { background-color: transparent; border: 1px solid #ced4da; color: #495057; }
+.btn-outline:hover { background-color: #e9ecef; }
+.btn-text { background: none; color: #dc3545; font-size: 13px; width: auto; padding: 0; }
+.delete-btn { background: none; border: none; color: #dc3545; cursor: pointer; font-size: 12px; }
+.delete-btn:disabled { color: #adb5bd; }
+
+/* Footer & PIN Area */
+.footer { border-top: 1px solid #e9ecef; padding-top: 15px; margin-top: 15px; }
+.pin-prompt-box { background: #fff; padding: 12px; border-radius: 8px; border: 1px solid #ced4da; }
+.pin-prompt-box label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+.pin-input-row { display: flex; gap: 8px; align-items: center; }
+.pin-input-row input { width: 70px; text-align: center; padding: 6px; }

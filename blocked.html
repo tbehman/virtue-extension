@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Site Blocked - Virtue</title>
+  <title>Site Intercepted - Virtue</title>
   <style>
     body {
       background-color: #f5f5f5;
@@ -21,39 +21,124 @@
       text-align: center;
       max-width: 450px;
       width: 100%;
+      box-sizing: border-box;
     }
     .icon {
       font-size: 48px;
-      color: #c62828;
+      color: #1b5e20;
       margin-bottom: 16px;
     }
     h1 {
       color: #333;
       font-size: 24px;
-      margin: 0 0 10px 0;
+      margin: 0 0 12px 0;
     }
     p {
       color: #666;
       font-size: 15px;
-      line-height: 1.5;
+      line-height: 1.6;
       margin: 0 0 24px 0;
     }
+    .btn-safety {
+      background-color: #1b5e20;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 15px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+      width: 100%;
+      box-sizing: border-box;
+      transition: background 0.2s;
+    }
+    .btn-safety:hover {
+      background-color: #0d3b10;
+    }
+    .override-link {
+      display: inline-block;
+      margin-top: 18px;
+      font-size: 13px;
+      color: #777;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .pin-box {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px dashed #e0e0e0;
+    }
+    .pin-input-group {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    input[type="password"] {
+      width: 120px;
+      padding: 8px;
+      font-size: 16px;
+      text-align: center;
+      letter-spacing: 4px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      outline: none;
+    }
+    input[type="password"]:focus {
+      border-color: #1b5e20;
+    }
+    .btn-override {
+      background-color: #d93025;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn-override:hover {
+      background-color: #a50e0e;
+    }
     .footer {
-      font-size: 12px;
-      color: #999;
+      font-size: 11px;
+      color: #bbb;
       border-top: 1px solid #eee;
       padding-top: 16px;
+      margin-top: 28px;
       text-transform: uppercase;
       letter-spacing: 1px;
+    }
+    .hidden {
+      display: none !important;
     }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="icon">🛡️</div>
-    <h1>Focus Enforced</h1>
-    <p>This website is outside your established Whitelist boundaries. Your accountability partner has been notified of the attempt.</p>
+    <div class="icon" id="modeIcon">🛡️</div>
+    <h1 id="headline">Boundary Protection Active</h1>
+    <p id="message">This domain is restricted under Virtue's accountability guardrails.</p>
+    
+    <!-- Primary Escape Route (Grace) -->
+    <button class="btn-safety" id="safetyBtn">Return to Safety</button>
+    
+    <!-- Friction Wall Challenge (Truth) -->
+    <a class="override-link" id="revealOverrideLink">I need to proceed anyway</a>
+    
+    <div class="pin-box hidden" id="overridePanel">
+      <p style="font-size: 13px; margin-bottom: 8px; color: #3c4043;">
+        Enter 4-Digit Master PIN to authorize bypass. Activity will be recorded in your log:
+      </p>
+      <div class="pin-input-group">
+        <input type="password" id="pinInput" maxlength="4" placeholder="••••" inputmode="numeric">
+        <button class="btn-override" id="confirmOverrideBtn">Confirm</button>
+      </div>
+    </div>
+
     <div class="footer">Virtue Accountability Engine</div>
   </div>
+
+  <script src="blocked.js"></script>
 </body>
 </html>
