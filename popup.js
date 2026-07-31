@@ -44,6 +44,9 @@ document.addEventListener("DOMContentLoaded", () => {
   let cachedPin = "";
   let activeFilterMode = "blocklist"; // 'blocklist' or 'whitelist'
 
+  // GitHub Pages Web Dashboard Base URL
+  const GITHUB_DASHBOARD_BASE_URL = "https://yourusername.github.io/virtue-dashboard/";
+
   // ==========================================
   // 1. STATE INITIALIZATION ENGINE
   // ==========================================
@@ -53,8 +56,7 @@ document.addEventListener("DOMContentLoaded", () => {
       "partnerEmail",
       "masterPin",
       "filterMode",
-      "spreadsheetId",
-      "dashboardPreviewUrl"
+      "driveFileId"
     ], (data) => {
       cachedPin = data.masterPin;
       activeFilterMode = data.filterMode || "blocklist";
@@ -70,18 +72,19 @@ document.addEventListener("DOMContentLoaded", () => {
           ? data.partnerEmail 
           : "No Partner Email Set";
           
-        // Render Connection Status & Preview Portal Link
-        if (data.spreadsheetId) {
+        // Render Connection Status & Web Dashboard Link
+        if (data.driveFileId) {
           sheetStatusContainer.style.borderLeft = "4px solid #1a73e8";
-          sheetStatusText.textContent = "🟢 Telemetry Active & Dashboard Linked";
+          sheetStatusText.textContent = "🟢 Drive Telemetry Active & Web Dashboard Linked";
           sheetStatusText.style.color = "#1a73e8";
           
-          const previewUrl = data.dashboardPreviewUrl || `https://docs.google.com/spreadsheets/d/${data.spreadsheetId}/preview`;
-          viewSheetLink.href = previewUrl;
+          const dashboardUrl = `${GITHUB_DASHBOARD_BASE_URL}?fileId=${data.driveFileId}`;
+          viewSheetLink.href = dashboardUrl;
+          viewSheetLink.textContent = "📊 Open Live Web Dashboard ↗";
           viewSheetLink.classList.remove("hidden");
         } else {
           sheetStatusContainer.style.borderLeft = "4px solid #b06000";
-          sheetStatusText.textContent = "🟡 Initializing telemetry and linking portal...";
+          sheetStatusText.textContent = "🟡 Syncing Drive logs & generating dashboard link...";
           sheetStatusText.style.color = "#b06000";
           viewSheetLink.classList.add("hidden");
         }
@@ -294,43 +297,49 @@ document.addEventListener("DOMContentLoaded", () => {
   addDomainBtn.addEventListener("click", addDomain);
 
   // ==========================================
-  // 6. DASHBOARD RELINK & RE-USE HANDLER
+  // 6. CONNECTION RE-AUTHENTICATION HANDLER
   // ==========================================
-  recreateSheetBtn.addEventListener("click", () => {
-    if (confirm("Reset connection status and verify accountability portal link?")) {
-      recreateSheetBtn.disabled = true;
-      recreateSheetBtn.textContent = "⏳ Verifying Connection...";
-      sheetStatusText.textContent = "⏳ Re-checking Google Drive asset state...";
-      sheetStatusText.style.color = "#b06000";
+  if (recreateSheetBtn) {
+    recreateSheetBtn.textContent = "🔄 Re-authenticate Drive Connection";
+    recreateSheetBtn.addEventListener("click", () => {
+      if (confirm("Re-authenticate Google Drive connection status?")) {
+        recreateSheetBtn.disabled = true;
+        recreateSheetBtn.textContent = "⏳ Verifying Connection...";
+        sheetStatusText.textContent = "⏳ Re-checking Google Drive asset state...";
+        sheetStatusText.style.color = "#b06000";
 
-      chrome.storage.local.get(["authToken"], (res) => {
-        const oldToken = res.authToken;
-        
-        // Remove active token from identity cache to guarantee fresh authorization handshake
-        if (oldToken) {
-          chrome.identity.removeCachedAuthToken({ token: oldToken }, () => {
+        chrome.storage.local.get(["authToken"], (res) => {
+          const oldToken = res.authToken;
+          
+          if (oldToken) {
+            chrome.identity.removeCachedAuthToken({ token: oldToken }, () => {
+              triggerRelinkHandshake();
+            });
+          } else {
             triggerRelinkHandshake();
-          });
-        } else {
-          triggerRelinkHandshake();
-        }
-      });
-    }
-  });
+          }
+        });
+      }
+    });
+  }
 
   function triggerRelinkHandshake() {
     chrome.identity.getAuthToken({ interactive: true }, (newToken) => {
       if (chrome.runtime.lastError || !newToken) {
         alert("Authentication error: Please check your Google Account status.");
-        recreateSheetBtn.disabled = false;
-        recreateSheetBtn.textContent = "🔄 Reset & Re-link Dashboard Portal";
+        if (recreateSheetBtn) {
+          recreateSheetBtn.disabled = false;
+          recreateSheetBtn.textContent = "🔄 Re-authenticate Drive Connection";
+        }
         init();
         return;
       }
 
       chrome.storage.local.set({ authToken: newToken }, () => {
-        recreateSheetBtn.disabled = false;
-        recreateSheetBtn.textContent = "🔄 Reset & Re-link Dashboard Portal";
+        if (recreateSheetBtn) {
+          recreateSheetBtn.disabled = false;
+          recreateSheetBtn.textContent = "🔄 Re-authenticate Drive Connection";
+        }
         alert("Connection re-authenticated successfully!");
         location.reload();
       });

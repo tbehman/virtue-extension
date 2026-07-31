@@ -1,79 +1,71 @@
 document.addEventListener("DOMContentLoaded", () => {
-  const modeIcon = document.getElementById("modeIcon");
-  const headline = document.getElementById("headline");
-  const message = document.getElementById("message");
   const safetyBtn = document.getElementById("safetyBtn");
   const revealOverrideLink = document.getElementById("revealOverrideLink");
   const overridePanel = document.getElementById("overridePanel");
   const pinInput = document.getElementById("pinInput");
   const confirmOverrideBtn = document.getElementById("confirmOverrideBtn");
 
-  // Parse the query parameters to find out which website triggered the redirect
+  // Parse target URL passed in the query parameter
   const urlParams = new URLSearchParams(window.location.search);
-  const targetUrl = urlParams.get("target") || "https://google.com";
+  const targetUrl = urlParams.get("target") || "https://www.google.com";
 
-  // Check the active accountability profile
-  chrome.storage.local.get({ accountabilityMode: "conscience", masterPin: "" }, (settings) => {
-    
-    if (settings.accountabilityMode === "guardian") {
-      // ---------------------------------------------
-      // 🛡️ GUARDIAN MODE USER INTERFACE TUNE
-      // ---------------------------------------------
-      modeIcon.textContent = "🛡️";
-      modeIcon.style.color = "#c62828"; // Warning Red
-      headline.textContent = "Focus Enforced";
-      message.textContent = "This website is restricted. Your accountability log has recorded this attempt.";
-      
-      // Keep options hidden for minors; no override paths exist
-      revealOverrideLink.classList.add("hidden");
-      
+  // 1. Primary Escape Route: Direct user back to safety
+  safetyBtn.addEventListener("click", () => {
+    if (window.history.length > 1) {
+      window.history.back();
     } else {
-      // ---------------------------------------------
-      // 💡 CONSCIENCE MODE USER INTERFACE TUNE (Adult)
-      // ---------------------------------------------
-      modeIcon.textContent = "💡";
-      modeIcon.style.color = "#2e7d32"; // Conscience Green
-      headline.textContent = "A Moment of Pause";
-      message.textContent = "This site is on your custom blocklist. Take a breath and choose integrity over impulse. Private victories stay private.";
-      
-      // Reveal the speed bump backdoor hook for adults
-      revealOverrideLink.classList.remove("hidden");
+      window.location.href = "https://www.google.com";
     }
+  });
 
-    // Direct route out: Takes them straight to safe ground (Google or search homepage)
-    safetyBtn.addEventListener("click", () => {
-      window.location.href = "https://google.com";
-    });
+  // 2. Reveal PIN Friction Wall
+  revealOverrideLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    overridePanel.classList.remove("hidden");
+    revealOverrideLink.classList.add("hidden");
+    pinInput.focus();
+  });
 
-    // Reveal the hidden PIN panel when requested
-    revealOverrideLink.addEventListener("click", () => {
-      overridePanel.classList.remove("hidden");
-      revealOverrideLink.classList.add("hidden");
-      pinInput.focus();
-    });
+  // 3. Confirm Master PIN Override
+  confirmOverrideBtn.addEventListener("click", () => {
+    const enteredPin = pinInput.value.trim();
 
-    // Handle authentication loop verification
-    confirmOverrideBtn.addEventListener("click", () => {
-      const inputPin = pinInput.value.trim();
+    chrome.storage.local.get(["masterPin", "logBuffer"], (data) => {
+      if (enteredPin && enteredPin === data.masterPin) {
+        // Build bypass URL with query parameter so background.js logs [VISITED]
+        const bypassUrl = new URL(targetUrl);
+        bypassUrl.searchParams.set("virtue_bypass", "true");
 
-      if (inputPin === settings.masterPin) {
-        // Build the target bypass URL structure
-        const targetObj = new URL(targetUrl);
-        // Append our validation parameter smoothly regardless of existing query strings
-        targetObj.searchParams.set("virtue_bypass", "true");
-        
-        // Pass the adult back to the browser worker pipeline to log [VISITED]
-        window.location.href = targetObj.toString();
+        // Log the override action explicitly
+        const buffer = data.logBuffer || [];
+        buffer.push({
+          url: `[OVERRIDE BYPASS] ${targetUrl}`,
+          title: `[OVERRIDE BYPASS] ${targetUrl}`,
+          searchQuery: "",
+          device: getDeviceInfo(),
+          timestamp: new Date().toISOString(),
+          flagged: true
+        });
+
+        chrome.storage.local.set({ logBuffer: buffer }, () => {
+          // Redirect user to destination page with bypass key
+          window.location.href = bypassUrl.toString();
+        });
       } else {
-        alert("Incorrect Master PIN.");
+        alert("Incorrect 4-Digit Master PIN.");
         pinInput.value = "";
         pinInput.focus();
       }
     });
-
-    // Allow submission via the Enter key inside the text field
-    pinInput.addEventListener("keypress", (e) => {
-      if (e.key === "Enter") confirmOverrideBtn.click();
-    });
   });
+
+  function getDeviceInfo() {
+    const ua = navigator.userAgent;
+    let os = "Desktop";
+    if (ua.includes("Win")) os = "Windows PC";
+    else if (ua.includes("Mac")) os = "Macbook";
+    else if (ua.includes("Android")) os = "Android Phone";
+    else if (ua.includes("iPhone") || ua.includes("iPad")) os = "iOS Device";
+    return `${os} (Chrome)`;
+  }
 });

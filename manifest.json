@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Virtue Accountability",
+  "name": "Virtue",
   "version": "1.0",
-  "description": "Transparent web accountability and dynamic search telemetry using Google Sheets.",
+  "description": "Transparent web accountability and search telemetry using Google Drive and live web dashboards.",
   "permissions": [
     "webNavigation",
     "storage",
@@ -14,8 +14,7 @@
   "host_permissions": [
     "https://*/*",
     "http://*/*",
-    "https://www.googleapis.com/*",
-    "https://sheets.googleapis.com/*"
+    "https://www.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -27,7 +26,6 @@
   "oauth2": {
     "client_id": "369511086314-iscotke4957avqtei6dr7j1mpkn613oe.apps.googleusercontent.com",
     "scopes": [
-      "https://www.googleapis.com/auth/spreadsheets",
       "https://www.googleapis.com/auth/drive.file"
     ]
   },

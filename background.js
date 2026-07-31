@@ -1,47 +1,88 @@
 import { DEFAULT_BLOCKLIST } from './defaultBlocklist.js';
 
 const SAFESEARCH_RULE_IDS = [101, 102, 103];
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
+// ==========================================
+// 0. UTILITIES & DEVICE IDENTIFICATION
+// ==========================================
 function getCleanTimestamp() {
-  const options = { 
-    weekday: 'short', 
-    month: 'short', 
-    day: 'numeric', 
-    hour: 'numeric', 
-    minute: '2-digit', 
-    hour12: true 
-  };
-  return new Date().toLocaleString('en-US', options); // e.g., "Sat, Jul 18, 1:58 AM"
+  return new Date().toISOString(); // ISO string for easy date comparison across devices
 }
 
-function refreshAuthToken(callback) {
-  chrome.storage.local.get(["authToken"], (res) => {
-    if (res.authToken) {
-      chrome.identity.removeCachedAuthToken({ token: res.authToken }, () => {
-        chrome.identity.getAuthToken({ interactive: true }, (newToken) => {
-          if (chrome.runtime.lastError || !newToken) return;
-          chrome.storage.local.set({ authToken: newToken }, () => {
-            if (callback) callback(newToken);
+function getDeviceInfo() {
+  const ua = navigator.userAgent;
+  let os = "Desktop";
+  
+  if (ua.includes("Win")) os = "Windows PC";
+  else if (ua.includes("Mac")) os = "Macbook";
+  else if (ua.includes("Android")) os = "Android Phone";
+  else if (ua.includes("iPhone") || ua.includes("iPad")) os = "iOS Device";
+
+  return `${os} (Chrome)`;
+}
+
+// ==========================================
+// 1. AUTHENTICATION & TOKEN MANAGERS
+// ==========================================
+function getValidAuthToken(interactive = false) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(["authToken"], (res) => {
+      if (res.authToken) {
+        chrome.identity.removeCachedAuthToken({ token: res.authToken }, () => {
+          chrome.identity.getAuthToken({ interactive }, (newToken) => {
+            if (chrome.runtime.lastError || !newToken) return reject(chrome.runtime.lastError);
+            chrome.storage.local.set({ authToken: newToken }, () => resolve(newToken));
           });
         });
-      });
-    } else {
-      chrome.identity.getAuthToken({ interactive: true }, (newToken) => {
-        if (chrome.runtime.lastError || !newToken) return;
-        chrome.storage.local.set({ authToken: newToken }, () => {
-          if (callback) callback(newToken);
+      } else {
+        chrome.identity.getAuthToken({ interactive }, (newToken) => {
+          if (chrome.runtime.lastError || !newToken) return reject(chrome.runtime.lastError);
+          chrome.storage.local.set({ authToken: newToken }, () => resolve(newToken));
         });
-      });
-    }
+      }
+    });
+  });
+}
+
+async function authenticatedFetch(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(["authToken"], async (res) => {
+      let token = res.authToken;
+
+      if (!token) {
+        try { token = await getValidAuthToken(false); } 
+        catch (e) { return reject("No valid authorization token available."); }
+      }
+
+      options.headers = {
+        ...options.headers,
+        "Authorization": `Bearer ${token}`
+      };
+
+      try {
+        let response = await fetch(url, options);
+
+        if (response.status === 401) {
+          console.warn("401 Unauthorized detected. Silently refreshing token...");
+          const newToken = await getValidAuthToken(false);
+          options.headers["Authorization"] = `Bearer ${newToken}`;
+          response = await fetch(url, options);
+        }
+
+        resolve(response);
+      } catch (err) {
+        reject(err);
+      }
+    });
   });
 }
 
 // ==========================================
-// 1. INITIALIZE BACKGROUND ALARMS & SETTINGS
+// 2. INITIALIZE ALARMS & RULES
 // ==========================================
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create("flushBuffer", { periodInMinutes: 1 });
-  chrome.alarms.create("weeklyPartnerReport", { periodInMinutes: 10080 });
 
   chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist"], (result) => {
     const updates = {};
@@ -107,21 +148,20 @@ function addToBuffer(data) {
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "flushBuffer") { flushBuffer(); } 
-  else if (alarm.name === "weeklyPartnerReport") { triggerWeeklyEmailReport(); }
+  if (alarm.name === "flushBuffer") { flushBufferToDriveJson(); }
 });
 
 // ==========================================
-// 2. DATA FLUSH & SMART SHEET RE-USE
+// 3. DRIVE JSON SYNC ENGINE (ROLLING 7-DAYS)
 // ==========================================
-function flushBuffer() {
-  chrome.storage.local.get({ logBuffer: [], authToken: "", spreadsheetId: "" }, (result) => {
+function flushBufferToDriveJson() {
+  chrome.storage.local.get({ logBuffer: [], driveFileId: "" }, (result) => {
     const buffer = result.logBuffer;
-    const token = result.authToken;
-    const sheetId = result.spreadsheetId;
+    let driveFileId = result.driveFileId;
 
-    if (buffer.length === 0 || !token) return;
+    if (buffer.length === 0) return;
 
+    // Deduplicate current buffer entries by URL
     let uniqueLogs = Array.from(new Set(buffer.map(a => a.url))).map(url => buffer.find(a => a.url === url));
 
     chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
@@ -130,183 +170,112 @@ function flushBuffer() {
           url: "[ALERT] Incognito Tracking is DISABLED in settings!",
           title: "[ALERT] Incognito Tracking is DISABLED in settings!",
           searchQuery: "N/A",
-          timestamp: getCleanTimestamp()
+          device: getDeviceInfo(),
+          timestamp: getCleanTimestamp(),
+          flagged: true
         });
       }
 
-      const rowsToAppend = uniqueLogs.map(log => [
-        log.timestamp, 
-        log.title || "Untitled Page", 
-        log.url, 
-        log.searchQuery || ""
-      ]);
-
-      if (!sheetId) {
-        createNewAccountabilitySheet(token, rowsToAppend);
+      if (!driveFileId) {
+        findOrCreateDriveJsonFile((fileId) => {
+          syncLogsToDriveFile(fileId, uniqueLogs);
+        });
       } else {
-        verifyAndAppendLogs(sheetId, token, rowsToAppend);
+        syncLogsToDriveFile(driveFileId, uniqueLogs);
       }
     });
   });
 }
 
-function verifyAndAppendLogs(sheetId, token, rows) {
-  // Check if existing spreadsheet is accessible in Google Drive
-  fetch(`https://www.googleapis.com/drive/v3/files/${sheetId}?fields=id,trashed`, {
-    headers: { "Authorization": `Bearer ${token}` }
-  })
-  .then(res => {
-    // Catch expired OAuth token immediately
-    if (res.status === 401) {
-      refreshAuthToken((newToken) => { verifyAndAppendLogs(sheetId, newToken, rows); });
-      return null;
-    }
-    return res.json();
-  })
-  .then(file => {
-    if (!file) return; // Token was refreshed, loop restarted
-
-    if (file && file.id && !file.trashed) {
-      appendLogsToSpreadsheet(sheetId, token, rows);
-    } else if (file) {
-      // File missing or trashed -> generate fresh sheet
-      chrome.storage.local.remove(["spreadsheetId", "dashboardPreviewUrl"], () => {
-        createNewAccountabilitySheet(token, rows);
-      });
-    }
-  })
-  .catch((err) => {
-    console.warn("Drive verification error:", err);
-  });
-}
-
-// ==========================================
-// 3. ACCOUNTABILITY SHEET MATRIX GENERATOR
-// ==========================================
-function createNewAccountabilitySheet(token, initialRows) {
-  chrome.storage.local.get({ customBlacklist: ["facebook.com", "instagram.com"] }, (storedData) => {
-    const escapedDomains = storedData.customBlacklist.map(d => d.replace(/\./g, '\\.'));
-    const blocklistRegex = escapedDomains.length > 0 ? `.*(${escapedDomains.join('|')}).*` : `.*(facebook\\.com|instagram\\.com).*`;
-
-    fetch("https://sheets.googleapis.com/v4/spreadsheets", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        properties: { title: "Virtue Accountability Dashboard Portal" },
-        sheets: [
-          { properties: { title: "📊 Overview & Status" } },
-          { properties: { title: "📋 Activity Logs" } }
-        ]
-      })
-    })
-    .then(response => response.json())
+function findOrCreateDriveJsonFile(callback) {
+  // Search Drive for existing virtue_logs.json file
+  const query = encodeURIComponent("name = 'virtue_logs.json' and trashed = false");
+  authenticatedFetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`)
+    .then(res => res.json())
     .then(data => {
-      if (data.spreadsheetId) {
-        const newSheetId = data.spreadsheetId;
-        const webPreviewUrl = `https://docs.google.com/spreadsheets/d/${newSheetId}/preview`;
+      if (data.files && data.files.length > 0) {
+        const fileId = data.files[0].id;
+        chrome.storage.local.set({ driveFileId: fileId }, () => callback(fileId));
+      } else {
+        // Create new virtue_logs.json file
+        const metadata = {
+          name: "virtue_logs.json",
+          mimeType: "application/json"
+        };
+        const initialContent = JSON.stringify({ metadata: { version: "1.0" }, logs: [] });
 
-        chrome.storage.local.set({ spreadsheetId: newSheetId, dashboardPreviewUrl: webPreviewUrl }, () => {
-          
-          const seedUrl = `https://sheets.googleapis.com/v4/spreadsheets/${newSheetId}/values/📊 Overview & Status!A1:N40?valueInputOption=USER_ENTERED`;
-          const seedData = Array(40).fill(null).map(() => Array(14).fill(""));
-          
-          // Main Title Header
-          seedData[1][3] = "Virtue Accountability Dashboard";
-          
-          // Section Titles (Row 4)
-          seedData[3][0] = "🏆 Top 10 Most Frequented Domains";
-          seedData[3][4] = "🚫 Blocklist Activity";
-          
-          // Sub-Headers (Row 5)
-          seedData[4][0] = "Website Domain"; seedData[4][1] = "Visit Frequency";
-          seedData[4][4] = "Time";           seedData[4][5] = "Page Context"; seedData[4][6] = "URL Block Target";
-          
-          // Formulas (Row 6)
-          seedData[5][0] = `=ARRAYFORMULA(QUERY(LET(urls, FILTER('📋 Activity Logs'!C2:C, '📋 Activity Logs'!C2:C<>"", NOT(REGEXMATCH('📋 Activity Logs'!C2:C, "(?i)\\[ALERT\\]|blocked\\.html"))), domains, REGEXEXTRACT(urls, "https?://([^/]+)"), HYPERLINK(urls, domains)), "SELECT Col1, COUNT(Col1) GROUP BY Col1 ORDER BY COUNT(Col1) DESC LIMIT 10 LABEL Col1 '', COUNT(Col1) ''", 0))`;
-          seedData[5][4] = `=QUERY('📋 Activity Logs'!A2:C, "SELECT A, B, C WHERE C CONTAINS '[BLOCKED]' OR C MATCHES '${blocklistRegex}' ORDER BY A DESC LIMIT 10 LABEL A '', B '', C ''", 0)`;
-          
-          // Section Titles (Row 19)
-          seedData[18][0] = "🔍 Last 10 Keyword Searches";
-          seedData[18][4] = "🌙 Night Owl Hours (11PM - 4AM)";
-          
-          // Sub-Headers (Row 20)
-          seedData[19][0] = "Time"; seedData[19][1] = "Search String";
-          seedData[19][4] = "Time"; seedData[19][5] = "Page Title"; seedData[19][6] = "Domain Context";
-          
-          // Formulas (Row 21)
-          seedData[20][0] = `=QUERY('📋 Activity Logs'!A2:D, "SELECT A, D WHERE D IS NOT NULL AND D != '' AND NOT A CONTAINS '[ALERT]' ORDER BY A DESC LIMIT 10 LABEL A '', D ''", 0)`;
-          seedData[20][4] = `=ARRAYFORMULA(QUERY(LET(t, '📋 Activity Logs'!A2:A, title, '📋 Activity Logs'!B2:B, url, '📋 Activity Logs'!C2:C, hr, IFERROR(VALUE(REGEXEXTRACT(t, "(\\\\d+):\\\\d+ [AP]M$"))), ampm, IFERROR(REGEXEXTRACT(t, "([AP]M)$")), valid, FILTER(HSTACK(t, title, HYPERLINK(url, REGEXEXTRACT(url, "https?://([^/]+)"))), NOT(REGEXMATCH(url, "(?i)\\\\[ALERT\\\\]")), ((ampm="PM")*(hr>=11)) + ((ampm="AM")*(hr<4)) + ((ampm="AM")*(hr=12))), valid), "SELECT Col1, Col2, Col3 LIMIT 10 LABEL Col1 '', Col2 '', Col3 ''", 0))`;
-
-          fetch(seedUrl, {
-            method: "PUT",
-            headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ values: seedData })
-          })
-          .then(() => {
-            fetch(`https://sheets.googleapis.com/v4/spreadsheets/${newSheetId}/values/📋 Activity Logs!A1:D1?valueInputOption=USER_ENTERED`, {
-              method: "PUT",
-              headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ values: [["Timestamp", "Page Title", "URL Path", "Search Query"]] })
-            })
-            .then(() => { 
-              appendLogsToSpreadsheet(newSheetId, token, initialRows); 
-              triggerWeeklyEmailReport();
-            });
-          });
+        authenticatedFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+          method: "POST",
+          headers: { "Content-Type": "multipart/related; boundary=virtue_boundary" },
+          body: `--virtue_boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--virtue_boundary\r\nContent-Type: application/json\r\n\r\n${initialContent}\r\n--virtue_boundary--`
+        })
+        .then(res => res.json())
+        .then(newFile => {
+          chrome.storage.local.set({ driveFileId: newFile.id }, () => callback(newFile.id));
         });
       }
     })
-    .catch(err => console.error("Sheet initialization error:", err));
-  });
+    .catch(err => console.error("Error finding/creating Drive file:", err));
 }
 
-function appendLogsToSpreadsheet(sheetId, token, rows) {
-  const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/📋 Activity Logs!A:D:append?valueInputOption=USER_ENTERED`;
-  
-  fetch(appendUrl, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ values: rows })
+function syncLogsToDriveFile(fileId, newLogs) {
+  // Fetch existing logs and version ETag
+  authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: { "Cache-Control": "no-cache" }
   })
-  .then(response => {
-    if (response.status === 401) {
-      refreshAuthToken((newToken) => { appendLogsToSpreadsheet(sheetId, newToken, rows); });
-      throw new Error("Re-authenticating session permissions...");
-    }
-    return response.json();
-  })
-  .then(() => {
-    chrome.storage.local.set({ logBuffer: [] });
-    fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}`, { headers: { "Authorization": `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => {
-        if (!d.sheets || d.sheets.length < 2) return;
-        const logsId = d.sheets[1].properties.sheetId;
-        fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}:batchUpdate`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ requests: [{ autoResizeDimensions: { dimensions: { sheetId: logsId, dimension: "COLUMNS", startIndex: 0, endIndex: 4 } } }] })
-        });
-      });
-  })
-  .catch(err => console.warn(err.message));
-}
+  .then(async (res) => {
+    const etag = res.headers.get("ETag");
+    let fileData = { metadata: { version: "1.0" }, logs: [] };
 
-function triggerWeeklyEmailReport() {
-  chrome.storage.local.get(["authToken", "spreadsheetId", "partnerEmail"], (data) => {
-    if (data.authToken && data.spreadsheetId && data.partnerEmail) {
-      const shareUrl = `https://www.googleapis.com/drive/v3/files/${data.spreadsheetId}/permissions?sendNotificationEmail=true`;
-      fetch(shareUrl, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${data.authToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "reader", type: "user", emailAddress: data.partnerEmail.trim() })
-      }).then(res => { if (res.status === 401) refreshAuthToken(); });
+    try {
+      fileData = await res.json();
+    } catch (e) {
+      console.warn("Could not parse existing Drive JSON; initializing fresh object.");
     }
+
+    const existingLogs = fileData.logs || [];
+    const combined = [...existingLogs, ...newLogs];
+
+    // Filter to rolling 7-day window
+    const cutoffTime = Date.now() - SEVEN_DAYS_MS;
+    const rollingLogs = combined.filter(log => {
+      const logTime = new Date(log.timestamp).getTime();
+      return !isNaN(logTime) && logTime > cutoffTime;
+    });
+
+    fileData.logs = rollingLogs;
+    fileData.metadata.lastUpdated = getCleanTimestamp();
+
+    // Upload updated JSON with ETag check to prevent multi-device race conditions
+    const uploadHeaders = { "Content-Type": "application/json" };
+    if (etag) uploadHeaders["If-Match"] = etag;
+
+    authenticatedFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+      method: "PATCH",
+      headers: uploadHeaders,
+      body: JSON.stringify(fileData, null, 2)
+    })
+    .then(uploadRes => {
+      if (uploadRes.status === 412) {
+        // Precondition Failed: Another device updated the file. Retry sync!
+        console.warn("ETag conflict detected. Retrying sync loop...");
+        setTimeout(() => syncLogsToDriveFile(fileId, newLogs), 500);
+      } else if (uploadRes.ok) {
+        // Success! Clear local buffer
+        chrome.storage.local.set({ logBuffer: [] });
+      }
+    })
+    .catch(err => console.error("Upload error:", err));
+  })
+  .catch(err => {
+    // If file was trashed/deleted, clear file pointer and retry next cycle
+    console.warn("Drive file missing or inaccessible:", err);
+    chrome.storage.local.remove(["driveFileId"]);
   });
 }
 
 // ==========================================
-// 4. DYNAMIC INTERCEPTION ENGINE (Blocklist vs Whitelist)
+// 4. DYNAMIC INTERCEPTION ENGINE
 // ==========================================
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   if (details.frameId !== 0) return; 
@@ -323,14 +292,12 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
       let shouldBlock = false;
 
       if (settings.filterMode === "whitelist") {
-        // Whitelist Mode: Block everything EXCEPT explicitly listed domains
         const inWhitelist = settings.customWhitelist.some(domain => {
           const cleanDomain = domain.toLowerCase().trim();
           return hostname === cleanDomain || hostname.endsWith("." + cleanDomain);
         });
         shouldBlock = !inWhitelist;
       } else {
-        // Blocklist Mode: Block only explicit matches
         const inCustomBlacklist = settings.customBlacklist.some(domain => {
           const cleanDomain = domain.toLowerCase().trim();
           return hostname === cleanDomain || hostname.endsWith("." + cleanDomain);
@@ -371,7 +338,14 @@ function processNavigation(url, tabId) {
       title = `[VISITED] ${title}`;
     }
 
-    addToBuffer({ url: finalUrl, title: title, searchQuery: searchQuery, timestamp: cleanLocalTime });
+    addToBuffer({
+      url: finalUrl,
+      title: title || "Untitled Page",
+      searchQuery: searchQuery || "",
+      device: getDeviceInfo(),
+      timestamp: cleanLocalTime,
+      flagged: finalUrl.includes("[BLOCKED]")
+    });
   });
 }
 

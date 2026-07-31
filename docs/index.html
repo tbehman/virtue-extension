@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Virtue | Accountability Dashboard</title>
+  <style>
+    :root {
+      --primary: #198754;
+      --primary-dark: #157347;
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --text-main: #212529;
+      --text-muted: #6c757d;
+      --danger: #dc3545;
+      --warning: #ffc107;
+      --border: #e9ecef;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      margin: 0;
+      padding: 0;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 30px 20px;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid var(--border);
+    }
+    header h1 { margin: 0; color: var(--primary); font-size: 28px; }
+    header p { margin: 5px 0 0 0; color: var(--text-muted); font-size: 14px; }
+    .status-badge {
+      background: #e8f5e9;
+      color: #1b5e20;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Loading / Error States */
+    #loadingState, #errorState {
+      text-align: center;
+      padding: 50px;
+      background: var(--card-bg);
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      margin-top: 20px;
+    }
+    #errorState { color: var(--danger); display: none; }
+    .hidden { display: none !important; }
+
+    /* Metrics Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .metric-card {
+      background: var(--card-bg);
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      border: 1px solid var(--border);
+    }
+    .metric-card h3 { margin: 0 0 10px 0; font-size: 13px; color: var(--text-muted); text-transform: uppercase; }
+    .metric-card .value { font-size: 32px; font-weight: bold; color: var(--text-main); margin: 0; }
+    .metric-card .value.danger { color: var(--danger); }
+
+    /* Layout Grids */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    @media (max-width: 768px) {
+      .dashboard-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Tables & Cards */
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 15px 20px;
+      background: #fdfdfe;
+      border-bottom: 1px solid var(--border);
+      font-weight: bold;
+      color: var(--text-main);
+    }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th, td { padding: 12px 20px; border-bottom: 1px solid var(--border); font-size: 14px; }
+    th { background: #fdfdfe; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+    tr:last-child td { border-bottom: none; }
+    
+    .text-truncate {
+      max-width: 250px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    /* Badges */
+    .device-badge {
+      background: #f1f3f4;
+      color: #5f6368;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .flag-badge {
+      background: #fce8e6;
+      color: #d93025;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <div>
+        <h1>🛡️ Virtue Dashboard</h1>
+        <p>Rolling 7-Day Accountability Telemetry</p>
+      </div>
+      <div class="status-badge" id="statusBadge">
+        ⏳ Connecting to Secure Data...
+      </div>
+    </header>
+
+    <!-- Loading / Error -->
+    <div id="loadingState">
+      <h2>Fetching Log Data...</h2>
+      <p style="color: var(--text-muted);">Decrypting and verifying payload from Google Drive.</p>
+    </div>
+    
+    <div id="errorState">
+      <h2>⚠️ Connection Error</h2>
+      <p id="errorMsg">Could not load dashboard. Please ensure the URL contains a valid fileId.</p>
+    </div>
+
+    <!-- Main Dashboard UI (Hidden until loaded) -->
+    <div id="dashboardView" class="hidden">
+      
+      <!-- Top Level Metrics -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <h3>Total Pages Logged</h3>
+          <p class="value" id="metricTotal">0</p>
+        </div>
+        <div class="metric-card">
+          <h3>Unique Domains</h3>
+          <p class="value" id="metricDomains">0</p>
+        </div>
+        <div class="metric-card">
+          <h3>Search Queries</h3>
+          <p class="value" id="metricSearches">0</p>
+        </div>
+        <div class="metric-card">
+          <h3>Flagged / Intercepted</h3>
+          <p class="value danger" id="metricFlagged">0</p>
+        </div>
+      </div>
+
+      <!-- Split Layout: Top Domains & Flagged -->
+      <div class="dashboard-grid">
+        <!-- Top Domains -->
+        <div class="card">
+          <div class="card-header">📊 Top Visited Domains</div>
+          <table>
+            <thead><tr><th>Domain</th><th style="text-align: right;">Visits</th></tr></thead>
+            <tbody id="topDomainsTable"></tbody>
+          </table>
+        </div>
+
+        <!-- Search Queries -->
+        <div class="card">
+          <div class="card-header">🔍 Recent Search Queries</div>
+          <table>
+            <thead><tr><th>Time</th><th>Search Query</th></tr></thead>
+            <tbody id="searchQueryTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Full Log Feed -->
+      <div class="card">
+        <div class="card-header">📋 Complete Activity Log (Rolling 7 Days)</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Device</th>
+              <th>Status</th>
+              <th>Page Title / Query</th>
+              <th>URL Path</th>
+            </tr>
+          </thead>
+          <tbody id="fullLogTable"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ⚠️ IMPORTANT: To read a public file directly via AJAX, Google requires an API key.
+    // Generate a free Google Cloud API key restricted to the Drive API and paste it here.
+    const GOOGLE_API_KEY = "YOUR_API_KEY_HERE"; 
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const fileId = urlParams.get("fileId");
+
+      if (!fileId) {
+        showError("No File ID provided in URL.");
+        return;
+      }
+
+      fetchLogs(fileId);
+    });
+
+    async function fetchLogs(fileId) {
+      try {
+        // Fetch raw JSON file from Drive
+        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${GOOGLE_API_KEY}`);
+        
+        if (!response.ok) {
+          throw new Error("Could not access data. The file might not be shared properly.");
+        }
+
+        const data = await response.json();
+        const logs = data.logs || [];
+        
+        processAndRender(logs);
+        
+        document.getElementById("loadingState").classList.add("hidden");
+        document.getElementById("dashboardView").classList.remove("hidden");
+        document.getElementById("statusBadge").innerHTML = "🟢 Live Sync Active";
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    function processAndRender(logs) {
+      // 1. Sort logs by timestamp (newest first)
+      logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      // 2. Compute Top Level Metrics
+      let totalLogs = logs.length;
+      let flaggedCount = 0;
+      let searchCount = 0;
+      let domainCounts = {};
+
+      logs.forEach(log => {
+        if (log.flagged || log.url.includes("[BLOCKED]") || log.url.includes("[ALERT]")) flaggedCount++;
+        if (log.searchQuery && log.searchQuery.trim() !== "") searchCount++;
+
+        // Extract clean domain
+        try {
+          if (log.url && log.url.startsWith("http")) {
+            const urlObj = new URL(log.url);
+            const domain = urlObj.hostname.replace('www.', '');
+            domainCounts[domain] = (domainCounts[domain] || 0) + 1;
+          }
+        } catch (e) {}
+      });
+
+      const uniqueDomains = Object.keys(domainCounts).length;
+
+      document.getElementById("metricTotal").textContent = totalLogs;
+      document.getElementById("metricDomains").textContent = uniqueDomains;
+      document.getElementById("metricSearches").textContent = searchCount;
+      document.getElementById("metricFlagged").textContent = flaggedCount;
+
+      // 3. Render Top Domains Table
+      const sortedDomains = Object.entries(domainCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+      
+      const topDomainsHtml = sortedDomains.map(([domain, count]) => `
+        <tr>
+          <td><a href="https://${domain}" target="_blank" style="color: #1a73e8; text-decoration: none;">${domain}</a></td>
+          <td style="text-align: right; font-weight: bold;">${count}</td>
+        </tr>
+      `).join('');
+      document.getElementById("topDomainsTable").innerHTML = topDomainsHtml || "<tr><td colspan='2'>No data yet</td></tr>";
+
+      // 4. Render Search Queries Table
+      const searchLogs = logs.filter(log => log.searchQuery && log.searchQuery.trim() !== "").slice(0, 10);
+      const searchHtml = searchLogs.map(log => `
+        <tr>
+          <td style="white-space: nowrap; color: var(--text-muted);">${formatTime(log.timestamp)}</td>
+          <td style="font-weight: bold;">"${log.searchQuery}"</td>
+        </tr>
+      `).join('');
+      document.getElementById("searchQueryTable").innerHTML = searchHtml || "<tr><td colspan='2'>No searches recorded</td></tr>";
+
+      // 5. Render Full Log Table
+      const fullLogHtml = logs.map(log => {
+        const isFlagged = log.flagged || log.url.includes("[BLOCKED]");
+        const statusBadge = isFlagged 
+          ? `<span class="flag-badge">⚠️ Flagged</span>` 
+          : `<span style="color: #198754; font-size: 12px;">✓ Clear</span>`;
+        
+        let deviceIcon = "💻";
+        if (log.device && (log.device.includes("Phone") || log.device.includes("iOS"))) deviceIcon = "📱";
+
+        return `
+        <tr style="${isFlagged ? 'background-color: #fffaf9;' : ''}">
+          <td style="white-space: nowrap; font-size: 12px; color: var(--text-muted);">${formatTime(log.timestamp)}</td>
+          <td><span class="device-badge" title="${log.device || 'Unknown'}">${deviceIcon} ${log.device ? log.device.split(' ')[0] : 'Web'}</span></td>
+          <td>${statusBadge}</td>
+          <td>
+            <div class="text-truncate" style="font-weight: 500;" title="${log.title}">${log.title || "Untitled"}</div>
+            ${log.searchQuery ? `<br><span style="font-size: 11px; color: #1a73e8;">🔍 Query: "${log.searchQuery}"</span>` : ''}
+          </td>
+          <td>
+            <a href="${log.url}" target="_blank" class="text-truncate" style="color: var(--text-muted); text-decoration: none; font-size: 12px;" title="${log.url}">
+              ${log.url}
+            </a>
+          </td>
+        </tr>
+      `}).join('');
+      document.getElementById("fullLogTable").innerHTML = fullLogHtml || "<tr><td colspan='5'>No browsing data recorded yet.</td></tr>";
+    }
+
+    function formatTime(isoString) {
+      if (!isoString) return "Unknown time";
+      const d = new Date(isoString);
+      return d.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' });
+    }
+
+    function showError(msg) {
+      document.getElementById("loadingState").classList.add("hidden");
+      document.getElementById("errorState").classList.remove("hidden");
+      document.getElementById("errorMsg").textContent = msg;
+      document.getElementById("statusBadge").innerHTML = "🔴 Connection Failed";
+      document.getElementById("statusBadge").style.background = "#fce8e6";
+      document.getElementById("statusBadge").style.color = "#d93025";
+    }
+  </script>
+</body>
+</html>
