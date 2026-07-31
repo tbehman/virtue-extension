@@ -45,7 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let activeFilterMode = "blocklist"; // 'blocklist' or 'whitelist'
 
   // GitHub Pages Web Dashboard Base URL
-  const GITHUB_DASHBOARD_BASE_URL = "https://yourusername.github.io/virtue-dashboard/";
+  const GITHUB_DASHBOARD_BASE_URL = "https://tbehman.github.io/virtue-extension/";
 
   // ==========================================
   // 1. STATE INITIALIZATION ENGINE
