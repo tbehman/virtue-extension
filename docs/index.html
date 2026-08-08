@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Virtue | Accountability Dashboard</title>
+  
+  <!-- Chart.js CDN for 24-Hour Activity Chart -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
   <style>
     :root {
       --primary: #198754;
@@ -13,7 +17,6 @@
       --text-main: #212529;
       --text-muted: #6c757d;
       --danger: #dc3545;
-      --warning: #ffc107;
       --border: #e9ecef;
     }
 
@@ -37,12 +40,12 @@
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
-      margin-bottom: 30px;
-      padding-bottom: 20px;
+      margin-bottom: 25px;
+      padding-bottom: 15px;
       border-bottom: 2px solid var(--border);
     }
-    header h1 { margin: 0; color: var(--primary); font-size: 28px; }
-    header p { margin: 5px 0 0 0; color: var(--text-muted); font-size: 14px; }
+    header h1 { margin: 0; color: var(--primary); font-size: 26px; }
+    header p { margin: 4px 0 0 0; color: var(--text-muted); font-size: 14px; font-weight: 500; }
     .status-badge {
       background: #e8f5e9;
       color: #1b5e20;
@@ -71,26 +74,27 @@
     .metrics-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 20px;
-      margin-bottom: 30px;
+      gap: 15px;
+      margin-bottom: 25px;
     }
     .metric-card {
       background: var(--card-bg);
-      padding: 20px;
+      padding: 16px 20px;
       border-radius: 12px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.04);
       border: 1px solid var(--border);
     }
-    .metric-card h3 { margin: 0 0 10px 0; font-size: 13px; color: var(--text-muted); text-transform: uppercase; }
-    .metric-card .value { font-size: 32px; font-weight: bold; color: var(--text-main); margin: 0; }
+    .metric-card h3 { margin: 0 0 6px 0; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .metric-card .value { font-size: 24px; font-weight: bold; color: var(--text-main); margin: 0; }
     .metric-card .value.danger { color: var(--danger); }
+    .metric-card .subtext { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
     /* Layout Grids */
     .dashboard-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 20px;
-      margin-bottom: 30px;
+      margin-bottom: 25px;
     }
     @media (max-width: 768px) {
       .dashboard-grid { grid-template-columns: 1fr; }
@@ -103,21 +107,26 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.04);
       border: 1px solid var(--border);
       overflow: hidden;
+      margin-bottom: 25px;
     }
     .card-header {
-      padding: 15px 20px;
+      padding: 14px 20px;
       background: #fdfdfe;
       border-bottom: 1px solid var(--border);
       font-weight: bold;
+      font-size: 14px;
       color: var(--text-main);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     table { width: 100%; border-collapse: collapse; text-align: left; }
-    th, td { padding: 12px 20px; border-bottom: 1px solid var(--border); font-size: 14px; }
-    th { background: #fdfdfe; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+    th, td { padding: 12px 20px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    th { background: #fdfdfe; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
     tr:last-child td { border-bottom: none; }
     
     .text-truncate {
-      max-width: 250px;
+      max-width: 280px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -125,11 +134,10 @@
       vertical-align: middle;
     }
 
-    /* Badges */
     .device-badge {
       background: #f1f3f4;
       color: #5f6368;
-      padding: 4px 8px;
+      padding: 3px 8px;
       border-radius: 4px;
       font-size: 11px;
       white-space: nowrap;
@@ -137,7 +145,7 @@
     .flag-badge {
       background: #fce8e6;
       color: #d93025;
-      padding: 4px 8px;
+      padding: 3px 8px;
       border-radius: 4px;
       font-size: 11px;
       font-weight: bold;
@@ -150,17 +158,17 @@
     <header>
       <div>
         <h1>🛡️ Virtue Dashboard</h1>
-        <p>Rolling 7-Day Accountability Telemetry</p>
+        <p id="dashboardSubheader">Accountability Telemetry Report</p>
       </div>
       <div class="status-badge" id="statusBadge">
-        ⏳ Connecting to Secure Data...
+        ⏳ Connecting to Data Vault...
       </div>
     </header>
 
     <!-- Loading / Error -->
     <div id="loadingState">
-      <h2>Fetching Log Data...</h2>
-      <p style="color: var(--text-muted);">Decrypting and verifying payload from Google Drive.</p>
+      <h2>Fetching Vault Telemetry...</h2>
+      <p style="color: var(--text-muted);">Verifying payload from secure Google Drive vault.</p>
     </div>
     
     <div id="errorState">
@@ -168,33 +176,45 @@
       <p id="errorMsg">Could not load dashboard. Please ensure the URL contains a valid fileId.</p>
     </div>
 
-    <!-- Main Dashboard UI (Hidden until loaded) -->
+    <!-- Main Dashboard UI -->
     <div id="dashboardView" class="hidden">
       
-      <!-- Top Level Metrics -->
+      <!-- Top Level Summary Metrics -->
       <div class="metrics-grid">
         <div class="metric-card">
-          <h3>Total Pages Logged</h3>
-          <p class="value" id="metricTotal">0</p>
-        </div>
-        <div class="metric-card">
-          <h3>Unique Domains</h3>
-          <p class="value" id="metricDomains">0</p>
+          <h3>Active Days</h3>
+          <p class="value" id="metricActiveDays">0 / 7</p>
+          <div class="subtext">Days reported in window</div>
         </div>
         <div class="metric-card">
           <h3>Search Queries</h3>
           <p class="value" id="metricSearches">0</p>
+          <div class="subtext">Explicit search engine queries</div>
         </div>
         <div class="metric-card">
-          <h3>Flagged / Intercepted</h3>
-          <p class="value danger" id="metricFlagged">0</p>
+          <h3>Intercepted / Flagged</h3>
+          <p class="value" id="metricFlagged">0</p>
+          <div class="subtext">Blocked or restricted attempts</div>
+        </div>
+        <div class="metric-card">
+          <h3>Peak Activity Window</h3>
+          <p class="value" id="metricPeakHour" style="font-size: 18px; padding-top: 4px;">--</p>
+          <div class="subtext">Highest volume hour of day</div>
         </div>
       </div>
 
-      <!-- Split Layout: Top Domains & Flagged -->
+      <!-- 24-Hour Activity Chart -->
+      <div class="card">
+        <div class="card-header">📈 24-Hour Activity Distribution</div>
+        <div style="padding: 15px 20px; height: 200px;">
+          <canvas id="activityChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Split Grid: Top Visited Domains & Clean Search Queries -->
       <div class="dashboard-grid">
         <!-- Top Domains -->
-        <div class="card">
+        <div class="card" style="margin-bottom: 0;">
           <div class="card-header">📊 Top Visited Domains</div>
           <table>
             <thead><tr><th>Domain</th><th style="text-align: right;">Visits</th></tr></thead>
@@ -202,8 +222,8 @@
           </table>
         </div>
 
-        <!-- Search Queries -->
-        <div class="card">
+        <!-- Search Queries (Explicit Only, No N/A) -->
+        <div class="card" style="margin-bottom: 0;">
           <div class="card-header">🔍 Recent Search Queries</div>
           <table>
             <thead><tr><th>Time</th><th>Search Query</th></tr></thead>
@@ -213,7 +233,7 @@
       </div>
 
       <!-- Full Log Feed -->
-      <div class="card">
+      <div class="card" style="margin-top: 25px;">
         <div class="card-header">📋 Complete Activity Log (Rolling 7 Days)</div>
         <table>
           <thead>
@@ -233,8 +253,6 @@
   </div>
 
   <script>
-    // ⚠️ IMPORTANT: To read a public file directly via AJAX, Google requires an API key.
-    // Generate a free Google Cloud API key restricted to the Drive API and paste it here.
     const GOOGLE_API_KEY = "AIzaSyBLE3aJNbjCEFTjDjrLplF-tAGJyskVGhw"; 
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -251,17 +269,17 @@
 
     async function fetchLogs(fileId) {
       try {
-        // Fetch raw JSON file from Drive
         const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${GOOGLE_API_KEY}`);
         
         if (!response.ok) {
-          throw new Error("Could not access data. The file might not be shared properly.");
+          throw new Error("Could not access data vault. Please check permissions.");
         }
 
         const data = await response.json();
         const logs = data.logs || [];
+        const metadata = data.metadata || {};
         
-        processAndRender(logs);
+        processAndRender(logs, metadata);
         
         document.getElementById("loadingState").classList.add("hidden");
         document.getElementById("dashboardView").classList.remove("hidden");
@@ -271,21 +289,47 @@
       }
     }
 
-    function processAndRender(logs) {
-      // 1. Sort logs by timestamp (newest first)
+    function processAndRender(logs, metadata) {
+      // Sort logs newest first
       logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-      // 2. Compute Top Level Metrics
-      let totalLogs = logs.length;
+      // 1. Calculate Date Range & Subheader
+      const profileName = metadata.userName || "User";
+      if (logs.length > 0) {
+        const oldest = new Date(logs[logs.length - 1].timestamp);
+        const newest = new Date(logs[0].timestamp);
+        const dateRangeStr = `${formatDateShort(oldest)} – ${formatDateShort(newest)}`;
+        document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName} • ${dateRangeStr}`;
+      } else {
+        document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName}`;
+      }
+
+      // 2. Compute Metrics
       let flaggedCount = 0;
-      let searchCount = 0;
+      let validSearchLogs = [];
       let domainCounts = {};
+      let activeDaysSet = new Set();
+      let hourlyCounts = new Array(24).fill(0);
 
       logs.forEach(log => {
-        if (log.flagged || log.url.includes("[BLOCKED]") || log.url.includes("[ALERT]")) flaggedCount++;
-        if (log.searchQuery && log.searchQuery.trim() !== "") searchCount++;
+        const logDate = new Date(log.timestamp);
+        if (!isNaN(logDate)) {
+          activeDaysSet.add(logDate.toDateString());
+          hourlyCounts[logDate.getHours()]++;
+        }
 
-        // Extract clean domain
+        if (log.flagged || (log.url && (log.url.includes("[BLOCKED]") || log.url.includes("[ALERT]")))) {
+          flaggedCount++;
+        }
+
+        // Strict Search Query Filtering (No "N/A", null, or empty strings)
+        if (log.searchQuery && 
+            log.searchQuery.trim() !== "" && 
+            log.searchQuery.trim().toUpperCase() !== "N/A") {
+          validSearchLogs.push(log);
+        }
+
+        // Domain Aggregation
         try {
           if (log.url && log.url.startsWith("http")) {
             const urlObj = new URL(log.url);
@@ -295,54 +339,82 @@
         } catch (e) {}
       });
 
-      const uniqueDomains = Object.keys(domainCounts).length;
+      // Update Summary Cards
+      document.getElementById("metricActiveDays").textContent = `${activeDaysSet.size} / 7 Days`;
+      document.getElementById("metricSearches").textContent = validSearchLogs.length;
+      
+      const flaggedEl = document.getElementById("metricFlagged");
+      flaggedEl.textContent = flaggedCount;
+      if (flaggedCount > 0) {
+        flaggedEl.classList.add("danger");
+      } else {
+        flaggedEl.classList.remove("danger");
+      }
 
-      document.getElementById("metricTotal").textContent = totalLogs;
-      document.getElementById("metricDomains").textContent = uniqueDomains;
-      document.getElementById("metricSearches").textContent = searchCount;
-      document.getElementById("metricFlagged").textContent = flaggedCount;
+      // Peak Hour Calculation
+      let peakHour = 0;
+      let maxCount = 0;
+      hourlyCounts.forEach((count, hour) => {
+        if (count > maxCount) {
+          maxCount = count;
+          peakHour = hour;
+        }
+      });
 
-      // 3. Render Top Domains Table
+      if (maxCount > 0) {
+        const startFormatted = formatHour(peakHour);
+        const endFormatted = formatHour((peakHour + 1) % 24);
+        document.getElementById("metricPeakHour").textContent = `${startFormatted} – ${endFormatted}`;
+      } else {
+        document.getElementById("metricPeakHour").textContent = "None";
+      }
+
+      // 3. Render 24-Hour Chart
+      renderActivityChart(hourlyCounts);
+
+      // 4. Render Top Domains Table
       const sortedDomains = Object.entries(domainCounts)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
+        .slice(0, 7);
       
       const topDomainsHtml = sortedDomains.map(([domain, count]) => `
         <tr>
-          <td><a href="https://${domain}" target="_blank" style="color: #1a73e8; text-decoration: none;">${domain}</a></td>
+          <td><a href="https://${domain}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: 500;">${domain}</a></td>
           <td style="text-align: right; font-weight: bold;">${count}</td>
         </tr>
       `).join('');
-      document.getElementById("topDomainsTable").innerHTML = topDomainsHtml || "<tr><td colspan='2'>No data yet</td></tr>";
+      document.getElementById("topDomainsTable").innerHTML = topDomainsHtml || "<tr><td colspan='2' style='color: var(--text-muted); text-align: center;'>No browsing recorded</td></tr>";
 
-      // 4. Render Search Queries Table
-      const searchLogs = logs.filter(log => log.searchQuery && log.searchQuery.trim() !== "").slice(0, 10);
-      const searchHtml = searchLogs.map(log => `
+      // 5. Render Search Queries Table (Clean, No N/A)
+      const topSearches = validSearchLogs.slice(0, 7);
+      const searchHtml = topSearches.map(log => `
         <tr>
-          <td style="white-space: nowrap; color: var(--text-muted);">${formatTime(log.timestamp)}</td>
-          <td style="font-weight: bold;">"${log.searchQuery}"</td>
+          <td style="white-space: nowrap; color: var(--text-muted); font-size: 12px;">${formatTime(log.timestamp)}</td>
+          <td style="font-weight: 600; color: #202124;">"${log.searchQuery}"</td>
         </tr>
       `).join('');
-      document.getElementById("searchQueryTable").innerHTML = searchHtml || "<tr><td colspan='2'>No searches recorded</td></tr>";
+      document.getElementById("searchQueryTable").innerHTML = searchHtml || "<tr><td colspan='2' style='color: var(--text-muted); text-align: center; padding: 15px;'>No explicit search queries recorded in this period.</td></tr>";
 
-      // 5. Render Full Log Table
+      // 6. Render Full Activity Log Table
       const fullLogHtml = logs.map(log => {
-        const isFlagged = log.flagged || log.url.includes("[BLOCKED]");
+        const isFlagged = log.flagged || (log.url && log.url.includes("[BLOCKED]"));
         const statusBadge = isFlagged 
           ? `<span class="flag-badge">⚠️ Flagged</span>` 
-          : `<span style="color: #198754; font-size: 12px;">✓ Clear</span>`;
+          : `<span style="color: #198754; font-size: 12px; font-weight: 500;">✓ Clear</span>`;
         
         let deviceIcon = "💻";
         if (log.device && (log.device.includes("Phone") || log.device.includes("iOS"))) deviceIcon = "📱";
 
+        const hasValidQuery = log.searchQuery && log.searchQuery.trim() !== "" && log.searchQuery.trim().toUpperCase() !== "N/A";
+
         return `
         <tr style="${isFlagged ? 'background-color: #fffaf9;' : ''}">
           <td style="white-space: nowrap; font-size: 12px; color: var(--text-muted);">${formatTime(log.timestamp)}</td>
-          <td><span class="device-badge" title="${log.device || 'Unknown'}">${deviceIcon} ${log.device ? log.device.split(' ')[0] : 'Web'}</span></td>
+          <td><span class="device-badge">${deviceIcon} ${log.device ? log.device.split(' ')[0] : 'Web'}</span></td>
           <td>${statusBadge}</td>
           <td>
-            <div class="text-truncate" style="font-weight: 500;" title="${log.title}">${log.title || "Untitled"}</div>
-            ${log.searchQuery ? `<br><span style="font-size: 11px; color: #1a73e8;">🔍 Query: "${log.searchQuery}"</span>` : ''}
+            <div class="text-truncate" style="font-weight: 500;" title="${log.title || 'Untitled'}">${log.title || "Untitled"}</div>
+            ${hasValidQuery ? `<br><span style="font-size: 11px; color: #1a73e8; font-weight: 600;">🔍 "${log.searchQuery}"</span>` : ''}
           </td>
           <td>
             <a href="${log.url}" target="_blank" class="text-truncate" style="color: var(--text-muted); text-decoration: none; font-size: 12px;" title="${log.url}">
@@ -351,11 +423,50 @@
           </td>
         </tr>
       `}).join('');
-      document.getElementById("fullLogTable").innerHTML = fullLogHtml || "<tr><td colspan='5'>No browsing data recorded yet.</td></tr>";
+      document.getElementById("fullLogTable").innerHTML = fullLogHtml || "<tr><td colspan='5' style='text-align: center; padding: 20px; color: var(--text-muted);'>No telemetry records found.</td></tr>";
+    }
+
+    function renderActivityChart(hourlyCounts) {
+      const ctx = document.getElementById('activityChart').getContext('2d');
+      const labels = Array.from({length: 24}, (_, i) => formatHour(i));
+
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Visits / Activity',
+            data: hourlyCounts,
+            backgroundColor: 'rgba(25, 135, 84, 0.25)',
+            borderColor: '#198754',
+            borderWidth: 1.5,
+            borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+            y: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } }
+          }
+        }
+      });
+    }
+
+    function formatHour(hour) {
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const formattedHour = hour % 12 || 12;
+      return `${formattedHour} ${ampm}`;
+    }
+
+    function formatDateShort(dateObj) {
+      return dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
     }
 
     function formatTime(isoString) {
-      if (!isoString) return "Unknown time";
+      if (!isoString) return "Unknown";
       const d = new Date(isoString);
       return d.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' });
     }
