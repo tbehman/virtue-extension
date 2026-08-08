@@ -14,105 +14,185 @@
       <h2>🛡️ Welcome to Virtue</h2>
       <p class="subtitle">Walk in Truth</p>
     </div>
-    
-    <div class="form-group">
-      <label for="partnerEmailInput">Partner's Email Address:</label>
-      <input type="email" id="partnerEmailInput" placeholder="e.g., trustedfriend@email.com" required>
-    </div>
 
-    <div class="form-group">
-      <label for="masterPinInput">Create a 4-Digit Master PIN:</label>
-      <input type="password" id="masterPinInput" maxlength="4" placeholder="••••" inputmode="numeric" required>
-    </div>
-
-    <!-- OAuth Connection Trigger -->
-    <div class="form-group" style="margin-top: 20px;">
-      <button id="authGoogleBtn" class="btn btn-primary" style="background-color: #4285F4; width: 100%;">
-        🔑 Initialize Secure Connection
+    <!-- Step 1: Initial OAuth Connection -->
+    <div id="authStepContainer" class="form-group" style="margin-top: 15px;">
+      <p style="font-size: 12px; color: #5f6368; text-align: center; margin-bottom: 15px;">
+        Connect your Google Account to initialize or discover your secure Virtue vault.
+      </p>
+      <button id="authGoogleBtn" class="btn btn-primary" style="background-color: #ffffff; color: #3c4043; border: 1px solid #dadce0; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px; font-weight: 600; cursor: pointer; border-radius: 4px;">
+        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+          <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+          <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+        <span>Connect Google Account</span>
       </button>
     </div>
-    
-    <p id="status" class="status-text"></p>
+
+    <!-- Step 2A: Found Vault Banner (Secondary Devices) -->
+    <div id="existingVaultNotice" class="hidden" style="background: #e8f0fe; border-left: 4px solid #1a73e8; padding: 10px; border-radius: 4px; margin-bottom: 12px; font-size: 12px; color: #174ea6;">
+      <span id="existingVaultText">👋 Welcome back! Found existing Virtue vault.</span>
+    </div>
+
+    <!-- Step 2B: Dynamic Profile Form -->
+    <div id="profileFormFields" class="hidden">
+      <div class="form-group" id="userNameGroup">
+        <label for="userNameInput">Your Name:</label>
+        <input type="text" id="userNameInput" placeholder="e.g., John Adams">
+      </div>
+
+      <div class="form-group" id="partnerNameGroup">
+        <label for="partnerNameInput">Accountability Partner's Name:</label>
+        <input type="text" id="partnerNameInput" placeholder="e.g., George Washington">
+      </div>
+
+      <div class="form-group" id="partnerEmailGroup">
+        <label for="partnerEmailInput">Accountability Partner's Email Address:</label>
+        <input type="email" id="partnerEmailInput" placeholder="e.g., trustedfriend@email.com">
+      </div>
+
+      <div class="form-group">
+        <label id="pinLabelText" for="masterPinInput">Create a 4-Digit Master PIN:</label>
+        <input type="password" id="masterPinInput" maxlength="4" placeholder="••••" inputmode="numeric" required>
+      </div>
+
+      <button id="completeSetupBtn" class="btn btn-primary" style="width: 100%; margin-top: 15px; padding: 10px; font-weight: 600;">
+        Complete Setup & Activate
+      </button>
+    </div>
+
+    <p id="status" class="status-text" style="margin-top: 10px;"></p>
   </div>
 
   <!-- ========================================== -->
-  <!-- 2. LIVE DASHBOARD SCREEN (Daily Operations) -->
+  <!-- 2. LIVE DASHBOARD SCREEN (Main Read-Only View) -->
   <!-- ========================================== -->
-  <div id="dashboardScreen" class="screen">
-    <div class="header-dashboard">
-      <div class="title-row">
-        <h2>🛡️ Virtue Dashboard</h2>
-        <span id="syncBadge" class="badge">🟢 Telemetry Active</span>
+  <div id="dashboardScreen" class="screen hidden" style="padding: 16px;">
+    <div class="title-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 18px;">🛡️</span>
+        <h2 style="margin: 0; font-size: 18px; color: #0f9d58; font-weight: bold;">Virtue</h2>
       </div>
-      <p class="partner-display">📧 Connected to: <strong id="partnerDisplayEmail">...</strong></p>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span id="syncBadge" class="badge" style="background: #e6f4ea; color: #137333; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: bold;">🟢 ACTIVE</span>
+        <button id="openSettingsBtn" title="Settings" style="background: none; border: none; font-size: 16px; cursor: pointer; color: #80868b; padding: 2px;">⚙️</button>
+      </div>
+    </div>
+
+    <hr style="border: 0; border-top: 1px solid #f1f3f4; margin: 12px 0;">
+
+    <div class="info-block" style="font-size: 13px; color: #5f6368; line-height: 1.8; margin-bottom: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>Account: <strong id="accountDisplay" style="color: #202124;">Loading...</strong></div>
+        <button id="refreshAccountBtn" title="Refresh Account" style="background: none; border: none; cursor: pointer; font-size: 12px; opacity: 0.6; padding: 0;">🔄</button>
+      </div>
+      <div>Accountability Partner: <strong id="partnerDisplayEmail" style="color: #202124;">Loading...</strong></div>
+    </div>
+
+    <hr style="border: 0; border-top: 1px solid #f1f3f4; margin: 12px 0;">
+
+    <a id="viewSheetLink" href="#" target="_blank" class="btn btn-primary" style="display: block; width: 100%; text-align: center; padding: 10px 0; background-color: #1a73e8; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">
+      📊 Open Live Web Dashboard ↗
+    </a>
+
+    <div id="pinPromptArea" class="pin-prompt-box hidden" style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 6px; border: 1px solid #dadce0;">
+      <label id="pinLabel" for="verifyPinInput" style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 6px;">Enter 4-Digit Master PIN:</label>
+      <div class="pin-input-row" style="display: flex; gap: 6px;">
+        <input type="password" id="verifyPinInput" maxlength="4" placeholder="••••" inputmode="numeric" style="width: 80px; text-align: center; font-size: 14px;">
+        <button id="submitPinBtn" class="btn btn-primary" style="padding: 4px 12px;">Unlock</button>
+        <button id="cancelPinBtn" class="btn btn-text" style="padding: 4px 8px;">Cancel</button>
+      </div>
+      <a id="forgotPinLink" href="#" style="font-size: 11px; color: #5f6368; display: block; margin-top: 6px; text-align: center;">Forgot PIN?</a>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 3. PIN-PROTECTED SETTINGS SCREEN -->
+  <!-- ========================================== -->
+  <div id="settingsScreen" class="screen hidden">
+    <div class="header-dashboard" style="border-bottom: 1px solid #dadce0; padding-bottom: 10px; margin-bottom: 12px;">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <button id="backToDashboardBtn" class="btn btn-text" style="padding: 0; font-size: 12px; font-weight: bold; color: #1a73e8;">← Back to Dashboard</button>
+        <h3 style="margin: 0; font-size: 14px;">⚙️ Settings</h3>
+      </div>
+    </div>
+
+    <!-- Profile Management Section -->
+    <div class="section" style="margin-bottom: 15px;">
+      <h3 style="font-size: 13px; margin: 0 0 8px 0;">👤 PROFILE & ACCOUNTABILITY</h3>
       
-      <!-- Connection Status & Web Portal Links -->
-      <div id="sheetStatusContainer" style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.04); border-radius: 6px; font-size: 12px; border-left: 4px solid #1a73e8;">
-        <span id="sheetStatusText">⏳ Verifying Connection Status...</span>
-        <div id="sheetActionButtons" style="margin-top: 5px;">
-          <a id="viewSheetLink" href="#" target="_blank" class="btn btn-text hidden" style="padding: 2px 0; font-weight: bold; text-decoration: underline; color: #1a73e8; display: inline-block;">
-            📊 Open Live Web Dashboard ↗
-          </a>
-        </div>
-      </div>
-    </div>
-
-    <!-- Active Core Protection Status (Read-Only) -->
-    <div class="section">
-      <h3>✨ Active Shields</h3>
-      <ul class="protection-list">
-        <li><span class="icon">✓</span> SafeSearch Enforcement (Google, Bing, DDG)</li>
-        <li><span class="icon">✓</span> Search Query Telemetry Active</li>
-      </ul>
-    </div>
-
-    <!-- Filtering Strategy & Domain Rules Section -->
-    <div class="section">
-      <!-- Mode Selection Segmented Control (Visible when unlocked) -->
-      <div id="modeToggleContainer" class="hidden" style="margin-bottom: 12px;">
-        <label style="font-weight: bold; font-size: 12px; display: block; margin-bottom: 6px;">Filter Strategy:</label>
-        <div class="segmented-control" style="display: flex; gap: 4px; background: #f1f3f4; padding: 3px; border-radius: 6px;">
-          <button id="modeBlocklistBtn" class="btn btn-segmented active" style="flex: 1; font-size: 11px; padding: 6px;">🛡️ Blocklist Mode</button>
-          <button id="modeWhitelistBtn" class="btn btn-segmented" style="flex: 1; font-size: 11px; padding: 6px;">🏰 Whitelist Only</button>
-        </div>
+      <div class="form-group" style="margin-bottom: 8px;">
+        <label for="editUserNameInput" style="font-size: 11px; font-weight: bold; display: block;">Your Name:</label>
+        <input type="text" id="editUserNameInput" style="width: 100%; padding: 6px; font-size: 12px; border: 1px solid #dadce0; border-radius: 4px;">
       </div>
 
-      <h3 id="domainSectionTitle">🚫 Custom Blocklist</h3>
+      <div class="form-group" style="margin-bottom: 8px;">
+        <label for="editPartnerNameInput" style="font-size: 11px; font-weight: bold; display: block;">Partner's Name:</label>
+        <input type="text" id="editPartnerNameInput" style="width: 100%; padding: 6px; font-size: 12px; border: 1px solid #dadce0; border-radius: 4px;">
+      </div>
+
+      <div class="form-group" style="margin-bottom: 8px;">
+        <label for="editPartnerEmailInput" style="font-size: 11px; font-weight: bold; display: block;">Partner's Email Address:</label>
+        <input type="email" id="editPartnerEmailInput" style="width: 100%; padding: 6px; font-size: 12px; border: 1px solid #dadce0; border-radius: 4px;">
+      </div>
+
+      <div id="emailWarningNotice" style="background: #fef7e0; border-left: 3px solid #f9ab00; padding: 6px 8px; border-radius: 4px; font-size: 10px; color: #b06000; margin-bottom: 8px;">
+        ⚠️ Changing partner email will send a courtesy security alert to the existing email.
+      </div>
+
+      <button id="saveProfileBtn" class="btn btn-secondary" style="width: 100%; padding: 6px; font-size: 12px; font-weight: bold;">
+        Save Profile Changes
+      </button>
+      <p id="profileStatusText" style="font-size: 11px; text-align: center; margin-top: 4px; display: none;"></p>
+    </div>
+
+    <hr style="border: 0; border-top: 1px solid #eee; margin: 12px 0;">
+
+    <!-- Filtering Strategy Section -->
+    <div class="section">
+      <label style="font-weight: bold; font-size: 12px; display: block; margin-bottom: 6px;">Filter Strategy:</label>
+      <div class="segmented-control" style="display: flex; gap: 4px; background: #f1f3f4; padding: 3px; border-radius: 6px; margin-bottom: 12px;">
+        <button id="modeBlocklistBtn" class="btn btn-segmented active" style="flex: 1; font-size: 11px; padding: 6px;">🛡️ Blocklist Mode</button>
+        <button id="modeWhitelistBtn" class="btn btn-segmented" style="flex: 1; font-size: 11px; padding: 6px;">🏰 Whitelist Only</button>
+      </div>
+
+      <h3 id="domainSectionTitle" style="font-size: 13px; margin: 0 0 4px 0;">🚫 CUSTOM BLOCKLIST</h3>
       <p id="domainSectionSubtext" style="font-size: 11px; color: #5f6368; margin-bottom: 8px;">
         Explicitly listed domains will be intercepted.
       </p>
 
-      <div id="domainContainer" class="disabled-view">
-        <div class="inline-input-row hidden" id="editDomainRow">
-          <input type="text" id="domainInput" placeholder="e.g., website.com">
+      <div id="domainContainer">
+        <div class="inline-input-row" id="editDomainRow" style="display: flex; gap: 6px; margin-bottom: 8px;">
+          <input type="text" id="domainInput" placeholder="e.g., website.com" style="flex: 1;">
           <button id="addDomainBtn" class="btn btn-secondary">Add</button>
         </div>
         <ul id="domainView" class="domain-list"></ul>
       </div>
     </div>
 
-    <!-- Relink & Sync Actions (Visible when unlocked) -->
-    <div class="section hidden" id="managementRow">
-      <h3>🔧 Connection Management</h3>
-      <button id="recreateSheetBtn" class="btn btn-secondary" style="width: 100%; background-color: #d93025; color: white; border: none; padding: 8px; border-radius: 4px; font-weight: bold; cursor: pointer;">
-        🔄 Re-authenticate Drive Connection
-      </button>
-    </div>
-
-    <!-- Dynamic Control Footer -->
-    <div class="footer">
-      <!-- Default View -->
-      <button id="lockActionBtn" class="btn btn-outline">🔧 Unlock Settings</button>
+    <!-- Accountability Storage Section -->
+    <div class="section" id="managementRow" style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 12px;">
+      <h3 style="font-size: 13px; margin: 0 0 4px 0; color: #3c4043;">💾 ACCOUNTABILITY STORAGE</h3>
       
-      <!-- PIN Prompt View (Hidden by default) -->
-      <div id="pinPromptArea" class="pin-prompt-box hidden">
-        <label id="pinLabel" for="verifyPinInput">Enter 4-Digit PIN:</label>
-        <div class="pin-input-row">
-          <input type="password" id="verifyPinInput" maxlength="4" placeholder="••••" inputmode="numeric">
-          <button id="submitPinBtn" class="btn btn-primary">Unlock</button>
-          <button id="cancelPinBtn" class="btn btn-text">Cancel</button>
+      <p style="font-size: 11px; color: #5f6368; margin-bottom: 10px;">
+        Your accountability logs and telemetry reports are stored securely in your personal Google Drive account (<strong style="color: #202124;">virtue_logs.json</strong>).
+      </p>
+
+      <div style="background: #f8f9fa; border: 1px solid #dadce0; border-radius: 6px; padding: 10px; font-size: 12px;">
+        <div style="margin-bottom: 8px;">
+          <span style="color: #5f6368; font-size: 11px; display: block;">Connected Google Account:</span>
+          <strong id="settingsUserEmail" style="color: #202124;">Loading...</strong>
         </div>
-        <a id="forgotPinLink" href="#" style="font-size: 11px; color: #5f6368; display: block; margin-top: 6px; text-align: center;">Forgot PIN?</a>
+
+        <div id="switchAccountDisclaimer" style="background: #fef7e0; border-left: 3px solid #f9ab00; padding: 6px 8px; border-radius: 4px; font-size: 10px; color: #b06000; margin-bottom: 10px;">
+          ⚠️ <strong>Security Disclaimer:</strong> Switching the connected Google account will dispatch a security notification email to your current accountability partner (<span id="disclaimerPartnerEmail">...</span>).
+        </div>
+
+        <button id="switchStorageAccountBtn" class="btn btn-secondary" style="width: 100%; background-color: #d93025; color: white; border: none; padding: 8px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px;">
+          🔄 Switch Google Storage Account
+        </button>
       </div>
     </div>
   </div>

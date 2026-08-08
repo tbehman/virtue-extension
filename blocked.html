@@ -1,135 +1,221 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Site Intercepted - Virtue</title>
+  <title>Pause & Reflect — Virtue</title>
   <style>
-    body {
-      background-color: #f5f5f5;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
+    :root {
+      --bg-color: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --accent-color: #2e7d32;
+      --accent-hover: #1b5e20;
+      --border-color: #e2e8f0;
+      --warning-bg: #fefce8;
+      --warning-border: #fef08a;
+      --warning-text: #854d0e;
+      --danger-color: #d93025;
+      --danger-hover: #a50e0e;
     }
-    .card {
-      background: white;
-      padding: 40px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-      text-align: center;
-      max-width: 450px;
-      width: 100%;
+
+    * {
       box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
-    .icon {
-      font-size: 48px;
-      color: #1b5e20;
-      margin-bottom: 16px;
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
     }
-    h1 {
-      color: #333;
-      font-size: 24px;
-      margin: 0 0 12px 0;
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+      width: 100%;
+      max-width: 480px;
+      padding: 36px 32px;
+      text-align: center;
+      border: 1px solid var(--border-color);
     }
-    p {
-      color: #666;
-      font-size: 15px;
-      line-height: 1.6;
-      margin: 0 0 24px 0;
+
+    .brand-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--accent-color);
+      margin-bottom: 24px;
     }
+
+    .scripture-card {
+      background: #f1f5f9;
+      border-left: 4px solid var(--accent-color);
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+
+    .scripture-text {
+      font-size: 0.98rem;
+      font-style: italic;
+      color: #334155;
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+
+    .scripture-ref {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-align: right;
+    }
+
+    .message {
+      font-size: 0.98rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-bottom: 28px;
+    }
+
     .btn-safety {
-      background-color: #1b5e20;
+      background-color: var(--accent-color);
       color: white;
       border: none;
-      padding: 12px 24px;
-      font-size: 15px;
-      font-weight: bold;
-      border-radius: 4px;
+      padding: 14px 20px;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 10px;
       cursor: pointer;
       width: 100%;
-      box-sizing: border-box;
-      transition: background 0.2s;
+      transition: background-color 0.2s ease;
     }
+
     .btn-safety:hover {
-      background-color: #0d3b10;
+      background-color: var(--accent-hover);
     }
+
     .override-link {
       display: inline-block;
       margin-top: 18px;
-      font-size: 13px;
-      color: #777;
+      font-size: 0.85rem;
+      color: var(--text-muted);
       text-decoration: underline;
       cursor: pointer;
     }
+
+    .override-link:hover {
+      color: var(--text-main);
+    }
+
     .pin-box {
       margin-top: 20px;
       padding-top: 20px;
-      border-top: 1px dashed #e0e0e0;
+      border-top: 1px dashed var(--border-color);
     }
+
+    .warning-box {
+      background-color: var(--warning-bg);
+      border: 1px solid var(--warning-border);
+      color: var(--warning-text);
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      margin-bottom: 16px;
+      text-align: left;
+    }
+
     .pin-input-group {
       display: flex;
       justify-content: center;
-      gap: 8px;
-      margin-top: 10px;
+      gap: 10px;
     }
+
     input[type="password"] {
       width: 120px;
-      padding: 8px;
-      font-size: 16px;
+      padding: 10px;
+      font-size: 1.1rem;
       text-align: center;
       letter-spacing: 4px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
       outline: none;
     }
+
     input[type="password"]:focus {
-      border-color: #1b5e20;
+      border-color: var(--accent-color);
     }
+
     .btn-override {
-      background-color: #d93025;
+      background-color: var(--danger-color);
       color: white;
       border: none;
-      padding: 8px 16px;
-      font-size: 14px;
-      font-weight: bold;
-      border-radius: 4px;
+      padding: 10px 18px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border-radius: 8px;
       cursor: pointer;
     }
+
     .btn-override:hover {
-      background-color: #a50e0e;
+      background-color: var(--danger-hover);
     }
+
     .footer {
       font-size: 11px;
-      color: #bbb;
-      border-top: 1px solid #eee;
+      color: #cbd5e1;
+      border-top: 1px solid #f1f5f9;
       padding-top: 16px;
       margin-top: 28px;
       text-transform: uppercase;
       letter-spacing: 1px;
     }
+
     .hidden {
       display: none !important;
     }
   </style>
 </head>
 <body>
+
   <div class="card">
-    <div class="icon" id="modeIcon">🛡️</div>
-    <h1 id="headline">Boundary Protection Active</h1>
-    <p id="message">This domain is restricted under Virtue's accountability guardrails.</p>
-    
-    <!-- Primary Escape Route (Grace) -->
-    <button class="btn-safety" id="safetyBtn">Return to Safety</button>
-    
-    <!-- Friction Wall Challenge (Truth) -->
+    <div class="brand-header">
+      🕊️ VIRTUE
+    </div>
+
+    <div class="scripture-card">
+      <div class="scripture-text" id="scriptureText">"Create in me a clean heart, O God; and renew a right spirit within me."</div>
+      <div class="scripture-ref" id="scriptureRef">— Psalm 51:10</div>
+    </div>
+
+    <p class="message">
+      <span id="userName">Friend</span>, take a breath. You're not alone in this.<br>
+      This site was paused to help you stay on the path.
+    </p>
+
+    <button class="btn-safety" id="safetyBtn">↩️ Return to Safety</button>
+
     <a class="override-link" id="revealOverrideLink">I need to proceed anyway</a>
-    
+
     <div class="pin-box hidden" id="overridePanel">
-      <p style="font-size: 13px; margin-bottom: 8px; color: #3c4043;">
-        Enter 4-Digit Master PIN to authorize bypass. Activity will be recorded in your log:
-      </p>
+      <div class="warning-box">
+        ⚠️ <strong>Need to view this page anyway?</strong><br>
+        Entering your PIN will unblock this site and log an overridden alert on the report sent to <span id="partnerName">your partner</span>.
+      </div>
+
       <div class="pin-input-group">
         <input type="password" id="pinInput" maxlength="4" placeholder="••••" inputmode="numeric">
         <button class="btn-override" id="confirmOverrideBtn">Confirm</button>
