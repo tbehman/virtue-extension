@@ -44,7 +44,14 @@
       padding-bottom: 15px;
       border-bottom: 2px solid var(--border);
     }
-    header h1 { margin: 0; color: var(--primary); font-size: 26px; }
+    header h1 { 
+      margin: 0; 
+      color: var(--primary); 
+      font-size: 26px; 
+      display: flex; 
+      align-items: center; 
+      gap: 10px; 
+    }
     header p { margin: 4px 0 0 0; color: var(--text-muted); font-size: 14px; font-weight: 500; }
     .status-badge {
       background: #e8f5e9;
@@ -157,7 +164,11 @@
   <div class="container">
     <header>
       <div>
-        <h1>🛡️ Virtue Dashboard</h1>
+        <!-- Image Logo Header -->
+        <h1>
+          <img src="virtue_logo.png" alt="Virtue Logo" style="height: 32px; width: auto;">
+          <span>Virtue Dashboard</span>
+        </h1>
         <p id="dashboardSubheader">Accountability Telemetry Report</p>
       </div>
       <div class="status-badge" id="statusBadge">
@@ -290,10 +301,8 @@
     }
 
     function processAndRender(logs, metadata) {
-      // Sort logs newest first
       logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-      // 1. Calculate Date Range & Subheader
       const profileName = metadata.userName || "User";
       if (logs.length > 0) {
         const oldest = new Date(logs[logs.length - 1].timestamp);
@@ -304,7 +313,6 @@
         document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName}`;
       }
 
-      // 2. Compute Metrics
       let flaggedCount = 0;
       let validSearchLogs = [];
       let domainCounts = {};
@@ -322,14 +330,12 @@
           flaggedCount++;
         }
 
-        // Strict Search Query Filtering (No "N/A", null, or empty strings)
         if (log.searchQuery && 
             log.searchQuery.trim() !== "" && 
             log.searchQuery.trim().toUpperCase() !== "N/A") {
           validSearchLogs.push(log);
         }
 
-        // Domain Aggregation
         try {
           if (log.url && log.url.startsWith("http")) {
             const urlObj = new URL(log.url);
@@ -339,7 +345,6 @@
         } catch (e) {}
       });
 
-      // Update Summary Cards
       document.getElementById("metricActiveDays").textContent = `${activeDaysSet.size} / 7 Days`;
       document.getElementById("metricSearches").textContent = validSearchLogs.length;
       
@@ -351,7 +356,6 @@
         flaggedEl.classList.remove("danger");
       }
 
-      // Peak Hour Calculation
       let peakHour = 0;
       let maxCount = 0;
       hourlyCounts.forEach((count, hour) => {
@@ -369,10 +373,8 @@
         document.getElementById("metricPeakHour").textContent = "None";
       }
 
-      // 3. Render 24-Hour Chart
       renderActivityChart(hourlyCounts);
 
-      // 4. Render Top Domains Table
       const sortedDomains = Object.entries(domainCounts)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 7);
@@ -385,7 +387,6 @@
       `).join('');
       document.getElementById("topDomainsTable").innerHTML = topDomainsHtml || "<tr><td colspan='2' style='color: var(--text-muted); text-align: center;'>No browsing recorded</td></tr>";
 
-      // 5. Render Search Queries Table (Clean, No N/A)
       const topSearches = validSearchLogs.slice(0, 7);
       const searchHtml = topSearches.map(log => `
         <tr>
@@ -395,7 +396,6 @@
       `).join('');
       document.getElementById("searchQueryTable").innerHTML = searchHtml || "<tr><td colspan='2' style='color: var(--text-muted); text-align: center; padding: 15px;'>No explicit search queries recorded in this period.</td></tr>";
 
-      // 6. Render Full Activity Log Table
       const fullLogHtml = logs.map(log => {
         const isFlagged = log.flagged || (log.url && log.url.includes("[BLOCKED]"));
         const statusBadge = isFlagged 
