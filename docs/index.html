@@ -133,10 +133,7 @@
 
     <div id="dashboardView" class="hidden">
       
-      <!-- System Audit Notice Banner (Dynamic) -->
-      <div id="auditNoticeContainer" class="hidden"></div>
-
-      <!-- 3 Metrics Summary Cards -->
+      <!-- 1. Top Row: 3 Metrics Summary Cards -->
       <div class="metrics-grid">
         <div class="metric-card">
           <h3>Active Days</h3>
@@ -155,7 +152,10 @@
         </div>
       </div>
 
-      <!-- 7-Day Daily Activity Chart -->
+      <!-- 2. Second Row: System Audit Notice Banner (Dynamic Details) -->
+      <div id="auditNoticeContainer" class="hidden"></div>
+
+      <!-- 3. Third Row: 7-Day Daily Activity Chart -->
       <div class="card">
         <div class="card-header">📈 Daily Activity Trend (Pages Visited)</div>
         <div style="padding: 15px 20px; height: 200px;">
@@ -182,7 +182,7 @@
         </div>
       </div>
 
-      <!-- Complete Activity Feed (Filtered) -->
+      <!-- Complete Activity Feed -->
       <div class="card" style="margin-top: 25px;">
         <div class="card-header">📋 Complete Activity Log (Rolling 7 Days)</div>
         <table>
