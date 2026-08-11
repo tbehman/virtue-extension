@@ -287,8 +287,10 @@
       const activeDaysCount = Math.min(activeDaysSet.size, 7);
       document.getElementById("metricActiveDays").textContent = `${activeDaysCount} / 7 Days`;
 
-      // Update Card 2: Web Searches
-      document.getElementById("metricSearches").textContent = validSearchLogs.length;
+      // Update Card 2: Unique Web Searches
+      const searchPhrases = validSearchLogs.map(log => log.searchQuery.trim().toLowerCase());
+      const uniquePhrases = new Set(searchPhrases);
+      document.getElementById("metricSearches").textContent = uniquePhrases.size;
 
       // Update Card 3: Ignored Warnings
       const warningsEl = document.getElementById("metricIgnoredWarnings");
@@ -356,23 +358,22 @@
       let noticeHtml = "";
       let hasAuditNotice = false;
 
-      // 1. Incognito Setup / Disconnect Notices
+      // 1. Real-Time Incognito Status Check (Evaluates Latest Heartbeat Only)
       Object.entries(devices).forEach(([devName, beats]) => {
         beats.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         
         const latest = beats[beats.length - 1];
-        const unmonitoredBeats = beats.filter(b => b.incognitoAllowed === false);
 
-        if (unmonitoredBeats.length > 0) {
+        // ONLY trigger banner if the device is CURRENTLY unmonitored
+        if (!latest.incognitoAllowed) {
           hasAuditNotice = true;
+          const unmonitoredBeats = beats.filter(b => b.incognitoAllowed === false);
           const firstOff = new Date(unmonitoredBeats[0].timestamp);
-          const lastOff = new Date(unmonitoredBeats[unmonitoredBeats.length - 1].timestamp);
-          const dateRangeStr = `${formatDateShort(firstOff)} – ${formatDateShort(lastOff)}`;
 
           if (!latest.hasEverEnabledIncognito) {
-            noticeHtml += `<p style="margin: 4px 0;">ℹ️ <strong>${devName}:</strong> Incognito monitoring setup incomplete since installation (${dateRangeStr}).</p>`;
+            noticeHtml += `<p style="margin: 4px 0;">ℹ️ <strong>${devName}:</strong> Incognito monitoring setup incomplete since installation.</p>`;
           } else {
-            noticeHtml += `<p style="margin: 4px 0;">⚠️ <strong>${devName}:</strong> Incognito monitoring was manually disabled between ${dateRangeStr}.</p>`;
+            noticeHtml += `<p style="margin: 4px 0;">⚠️ <strong>${devName}:</strong> Incognito monitoring is currently disabled (Unmonitored since ${formatDateShort(firstOff)}).</p>`;
           }
         }
       });
