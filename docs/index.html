@@ -52,7 +52,9 @@
       margin-bottom: 25px;
       font-size: 13px;
     }
-    .audit-notice h4 { margin: 0 0 6px 0; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+    .audit-notice h4 { margin: 0 0 8px 0; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+    .audit-notice ul { margin: 6px 0 0 0; padding-left: 20px; }
+    .audit-notice li { margin-bottom: 4px; }
 
     #loadingState, #errorState {
       text-align: center; padding: 50px; background: var(--card-bg);
@@ -62,7 +64,7 @@
     .hidden { display: none !important; }
 
     .metrics-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 15px; margin-bottom: 25px;
     }
     .metric-card {
@@ -70,7 +72,7 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border);
     }
     .metric-card h3 { margin: 0 0 6px 0; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    .metric-card .value { font-size: 22px; font-weight: bold; color: var(--text-main); margin: 0; }
+    .metric-card .value { font-size: 24px; font-weight: bold; color: var(--text-main); margin: 0; }
     .metric-card .value.danger { color: var(--danger); }
     .metric-card .subtext { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
@@ -134,7 +136,7 @@
       <!-- System Audit Notice Banner (Dynamic) -->
       <div id="auditNoticeContainer" class="hidden"></div>
 
-      <!-- Metrics Summary -->
+      <!-- 3 Metrics Summary Cards -->
       <div class="metrics-grid">
         <div class="metric-card">
           <h3>Active Days</h3>
@@ -142,25 +144,20 @@
           <div class="subtext">Days reported in window</div>
         </div>
         <div class="metric-card">
-          <h3>Search Queries</h3>
+          <h3>Web Searches</h3>
           <p class="value" id="metricSearches">0</p>
           <div class="subtext">Explicit search engine queries</div>
         </div>
         <div class="metric-card">
-          <h3>Intercepted / Flagged</h3>
-          <p class="value" id="metricFlagged">0</p>
-          <div class="subtext">Explicitly blocked site attempts</div>
-        </div>
-        <div class="metric-card">
-          <h3>Incognito Coverage</h3>
-          <p class="value" id="metricIncognitoCoverage" style="font-size: 16px; padding-top: 4px;">Checking...</p>
-          <div class="subtext" id="metricIncognitoSubtext">Audit status across devices</div>
+          <h3>Ignored Warnings</h3>
+          <p class="value" id="metricIgnoredWarnings">0</p>
+          <div class="subtext">Visited past restriction shield</div>
         </div>
       </div>
 
-      <!-- Activity Chart -->
+      <!-- 7-Day Daily Activity Chart -->
       <div class="card">
-        <div class="card-header">📈 24-Hour Activity Distribution</div>
+        <div class="card-header">📈 Daily Activity Trend (Pages Visited)</div>
         <div style="padding: 15px 20px; height: 200px;">
           <canvas id="activityChart"></canvas>
         </div>
@@ -242,25 +239,36 @@
         document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName} • ${formatDateShort(oldest)} – ${formatDateShort(newest)}`;
       }
 
-      // 2. Process Incognito Audit Stream per Device
-      processAuditStream(heartbeats);
+      // 2. Identify Ignored Warnings (Proceeded Past Block)
+      const ignoredWarningLogs = browsingLogs.filter(log => 
+        (log.title && log.title.includes("[VISITED]")) || 
+        (log.url && log.url.includes("virtue_bypass=true"))
+      );
 
-      // 3. Process Browsing Metrics
-      let blockedCount = 0;
+      // 3. Process Incognito Audit Stream & Ignored Warnings Notice Banner
+      processAuditStream(heartbeats, ignoredWarningLogs);
+
+      // 4. Process Metrics
       let validSearchLogs = [];
       let domainCounts = {};
       let activeDaysSet = new Set();
-      let hourlyCounts = new Array(24).fill(0);
+
+      // Daily Activity Counts for 7-Day Chart
+      const dailyCounts = {};
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        dailyCounts[d.toDateString()] = 0;
+      }
 
       browsingLogs.forEach(log => {
         const logDate = new Date(log.timestamp);
         if (!isNaN(logDate)) {
-          activeDaysSet.add(logDate.toDateString());
-          hourlyCounts[logDate.getHours()]++;
-        }
-
-        if (log.flagged === true || (log.url && log.url.includes("[BLOCKED]"))) {
-          blockedCount++;
+          const dateStr = logDate.toDateString();
+          activeDaysSet.add(dateStr);
+          if (dailyCounts[dateStr] !== undefined) {
+            dailyCounts[dateStr]++;
+          }
         }
 
         if (log.searchQuery && log.searchQuery.trim() !== "" && log.searchQuery.trim().toUpperCase() !== "N/A") {
@@ -275,14 +283,24 @@
         } catch (e) {}
       });
 
-      document.getElementById("metricActiveDays").textContent = `${activeDaysSet.size} / 7 Days`;
-      document.getElementById("metricSearches").textContent = validSearchLogs.length;
-      
-      const flaggedEl = document.getElementById("metricFlagged");
-      flaggedEl.textContent = blockedCount;
-      if (blockedCount > 0) flaggedEl.classList.add("danger");
+      // Update Card 1: Active Days (Capped at 7)
+      const activeDaysCount = Math.min(activeDaysSet.size, 7);
+      document.getElementById("metricActiveDays").textContent = `${activeDaysCount} / 7 Days`;
 
-      renderActivityChart(hourlyCounts);
+      // Update Card 2: Web Searches
+      document.getElementById("metricSearches").textContent = validSearchLogs.length;
+
+      // Update Card 3: Ignored Warnings
+      const warningsEl = document.getElementById("metricIgnoredWarnings");
+      warningsEl.textContent = ignoredWarningLogs.length;
+      if (ignoredWarningLogs.length > 0) {
+        warningsEl.classList.add("danger");
+      } else {
+        warningsEl.classList.remove("danger");
+      }
+
+      // Render 7-Day Daily Chart
+      renderDailyChart(dailyCounts);
 
       // Top Domains Table
       const sortedDomains = Object.entries(domainCounts).sort((a, b) => b[1] - a[1]).slice(0, 7);
@@ -301,17 +319,17 @@
         </tr>
       `).join('') || "<tr><td colspan='2' style='color: var(--text-muted); text-align: center; padding: 15px;'>No explicit search queries recorded.</td></tr>";
 
-      // Complete Activity Feed (HEARTBEATS FILTERED OUT)
+      // Complete Activity Feed
       document.getElementById("fullLogTable").innerHTML = browsingLogs.map(log => {
-        const isBlocked = log.flagged === true || (log.url && log.url.includes("[BLOCKED]"));
-        const statusBadge = isBlocked 
-          ? `<span class="flag-badge">⚠️ Blocked</span>` 
+        const isBypassed = (log.title && log.title.includes("[VISITED]")) || (log.url && log.url.includes("virtue_bypass=true"));
+        const statusBadge = isBypassed 
+          ? `<span class="flag-badge">⚠️ Ignored Warning</span>` 
           : `<span style="color: #198754; font-size: 12px; font-weight: 500;">✓ Clear</span>`;
         
         const deviceName = log.device || "Desktop";
 
         return `
-        <tr style="${isBlocked ? 'background-color: #fffaf9;' : ''}">
+        <tr style="${isBypassed ? 'background-color: #fffaf9;' : ''}">
           <td style="white-space: nowrap; font-size: 12px; color: var(--text-muted);">${formatTime(log.timestamp)}</td>
           <td><span class="device-badge">💻 ${deviceName}</span></td>
           <td>${statusBadge}</td>
@@ -327,13 +345,7 @@
     }
 
     // Incognito Heartbeat & Audit Parser
-    function processAuditStream(heartbeats) {
-      if (heartbeats.length === 0) {
-        document.getElementById("metricIncognitoCoverage").textContent = "🟢 Monitored";
-        return;
-      }
-
-      // Group heartbeats by device
+    function processAuditStream(heartbeats, ignoredWarningLogs) {
       const devices = {};
       heartbeats.forEach(hb => {
         const devName = hb.device || "Primary Device";
@@ -342,8 +354,9 @@
       });
 
       let noticeHtml = "";
-      let totalUnmonitoredDevices = 0;
+      let hasAuditNotice = false;
 
+      // 1. Incognito Setup / Disconnect Notices
       Object.entries(devices).forEach(([devName, beats]) => {
         beats.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         
@@ -351,49 +364,60 @@
         const unmonitoredBeats = beats.filter(b => b.incognitoAllowed === false);
 
         if (unmonitoredBeats.length > 0) {
-          totalUnmonitoredDevices++;
+          hasAuditNotice = true;
           const firstOff = new Date(unmonitoredBeats[0].timestamp);
           const lastOff = new Date(unmonitoredBeats[unmonitoredBeats.length - 1].timestamp);
           const dateRangeStr = `${formatDateShort(firstOff)} – ${formatDateShort(lastOff)}`;
 
           if (!latest.hasEverEnabledIncognito) {
-            // Scenario A: Never Setup
             noticeHtml += `<p style="margin: 4px 0;">ℹ️ <strong>${devName}:</strong> Incognito monitoring setup incomplete since installation (${dateRangeStr}).</p>`;
           } else {
-            // Scenario C/Manual Turn-Off
             noticeHtml += `<p style="margin: 4px 0;">⚠️ <strong>${devName}:</strong> Incognito monitoring was manually disabled between ${dateRangeStr}.</p>`;
           }
         }
       });
 
-      const noticeContainer = document.getElementById("auditNoticeContainer");
-      const coverageEl = document.getElementById("metricIncognitoCoverage");
+      // 2. Ignored Warnings List in Top Notice Box
+      if (ignoredWarningLogs.length > 0) {
+        hasAuditNotice = true;
+        noticeHtml += `<div style="margin-top: 8px;"><strong>🛑 Restricted Sites Visited (${ignoredWarningLogs.length} Ignored Warnings):</strong><ul>`;
+        ignoredWarningLogs.forEach(log => {
+          const timeStr = formatTime(log.timestamp);
+          const dev = log.device || "Desktop";
+          const title = log.title ? log.title.replace("[VISITED]", "").trim() : "Untitled";
+          noticeHtml += `<li><strong>${timeStr}</strong> (${dev}) — <em>"${title}"</em> <br><a href="${log.url}" target="_blank" style="color: #664d03; font-size: 11px;">${log.url}</a></li>`;
+        });
+        noticeHtml += `</ul></div>`;
+      }
 
-      if (totalUnmonitoredDevices > 0) {
-        coverageEl.textContent = "⚠️ Audit Notice";
-        coverageEl.style.color = "var(--danger)";
+      const noticeContainer = document.getElementById("auditNoticeContainer");
+
+      if (hasAuditNotice) {
         noticeContainer.className = "audit-notice";
         noticeContainer.innerHTML = `<h4>⚠️ System Audit Notice</h4>${noticeHtml}`;
       } else {
-        coverageEl.textContent = "🟢 100% Active";
-        coverageEl.style.color = "var(--primary)";
         noticeContainer.className = "hidden";
       }
     }
 
-    function renderActivityChart(hourlyCounts) {
+    function renderDailyChart(dailyCounts) {
       const ctx = document.getElementById('activityChart').getContext('2d');
+      const labels = Object.keys(dailyCounts).map(dStr => {
+        const d = new Date(dStr);
+        return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+      });
+      const dataValues = Object.values(dailyCounts);
+
       new Chart(ctx, {
         type: 'bar',
         data: {
-          labels: Array.from({length: 24}, (_, i) => formatHour(i)),
-          datasets: [{ data: hourlyCounts, backgroundColor: 'rgba(25, 135, 84, 0.25)', borderColor: '#198754', borderWidth: 1.5, borderRadius: 4 }]
+          labels: labels,
+          datasets: [{ data: dataValues, backgroundColor: 'rgba(25, 135, 84, 0.25)', borderColor: '#198754', borderWidth: 1.5, borderRadius: 4 }]
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
       });
     }
 
-    function formatHour(h) { return `${h % 12 || 12} ${h >= 12 ? 'PM' : 'AM'}`; }
     function formatDateShort(d) { return d.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
     function formatTime(iso) { return iso ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' }) : "Unknown"; }
     function showError(msg) {
