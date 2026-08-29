@@ -3,83 +3,565 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Virtue Web Dashboard</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Virtue | Accountability Dashboard</title>
+  
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root {
+      --primary: #198754;
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --text-main: #212529;
+      --text-muted: #6c757d;
+      --danger: #dc3545;
+      --warning-bg: #fff3cd;
+      --warning-border: #ffe69c;
+      --warning-text: #664d03;
+      --border: #e9ecef;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      margin: 0; padding: 0; line-height: 1.5;
+    }
+
+    .container { max-width: 1100px; margin: 0 auto; padding: 30px 20px; }
+
+    header {
+      display: flex; justify-content: space-between; align-items: flex-end;
+      margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid var(--border);
+    }
+    header h1 { margin: 0; color: var(--primary); font-size: 26px; display: flex; align-items: center; gap: 12px; }
+    header p { margin: 4px 0 0 0; color: var(--text-muted); font-size: 14px; font-weight: 500; }
+    
+    .status-badge {
+      background: #e8f5e9; color: #1b5e20; padding: 6px 12px; border-radius: 20px;
+      font-size: 12px; font-weight: bold; display: flex; align-items: center; gap: 6px;
+    }
+
+    /* Priority Audit Notice Banner */
+    .audit-notice {
+      background: var(--warning-bg);
+      border: 1px solid var(--warning-border);
+      color: var(--warning-text);
+      padding: 14px 20px;
+      border-radius: 8px;
+      margin-bottom: 25px;
+      font-size: 13px;
+    }
+    .audit-notice h4 { margin: 0 0 8px 0; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+    .audit-notice ul { margin: 6px 0 0 0; padding-left: 20px; }
+    .audit-notice li { margin-bottom: 4px; }
+
+    #loadingState, #errorState {
+      text-align: center; padding: 50px; background: var(--card-bg);
+      border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); margin-top: 20px;
+    }
+    #errorState { color: var(--danger); display: none; }
+    .hidden { display: none !important; }
+
+    .metrics-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 15px; margin-bottom: 25px;
+    }
+    .metric-card {
+      background: var(--card-bg); padding: 16px 20px; border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border);
+    }
+    .metric-card h3 { margin: 0 0 6px 0; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .metric-card .value { font-size: 24px; font-weight: bold; color: var(--text-main); margin: 0; }
+    .metric-card .value.danger { color: var(--danger); }
+    .metric-card .subtext { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
+    @media (max-width: 768px) { .dashboard-grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--card-bg); border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border);
+      overflow: hidden; margin-bottom: 25px;
+    }
+    .card-header {
+      padding: 14px 20px; background: #fdfdfe; border-bottom: 1px solid var(--border);
+      font-weight: bold; font-size: 14px; color: var(--text-main);
+    }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th, td { padding: 12px 20px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    th { background: #fdfdfe; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    tr:last-child td { border-bottom: none; }
+
+    .text-truncate {
+      max-width: 280px; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; display: inline-block; vertical-align: middle;
+    }
+    .device-badge {
+      background: #f1f3f4; color: #5f6368; padding: 3px 8px;
+      border-radius: 4px; font-size: 11px; white-space: nowrap;
+    }
+    .flag-badge {
+      background: #fce8e6; color: #d93025; padding: 3px 8px;
+      border-radius: 4px; font-size: 11px; font-weight: bold;
+    }
+
+    /* Accordion styles for domain grouping */
+    details.domain-group {
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+    }
+    details.domain-group summary {
+      cursor: pointer; font-weight: 600; display: flex; justify-content: space-between;
+    }
+    .domain-sublist {
+      margin-top: 10px; padding-left: 15px; font-size: 12px;
+    }
+    .domain-sublist li {
+      margin-bottom: 6px; list-style-type: none;
+    }
+
+    @media (max-width: 600px) {
+      .container { padding: 12px 8px; }
+      header { flex-direction: column; align-items: flex-start; gap: 8px; }
+
+      #fullLogTable, #fullLogTable tr, #fullLogTable td {
+        display: block; width: 100%; box-sizing: border-box;
+      }
+      .card table thead { display: none; }
+      #fullLogTable tr {
+        border-bottom: 1px solid var(--border); padding: 12px 10px; background: #ffffff;
+      }
+      #fullLogTable td:nth-child(1),
+      #fullLogTable td:nth-child(2),
+      #fullLogTable td:nth-child(3) {
+        display: inline-block; padding: 2px 6px 2px 0; border: none; font-size: 11px;
+      }
+      #fullLogTable td:nth-child(4), #fullLogTable td:nth-child(5) {
+        display: block; padding: 4px 0 2px 0; border: none;
+      }
+      .text-truncate {
+        max-width: 100% !important; white-space: normal !important; word-break: break-all !important; overflow: visible !important;
+      }
+    }
+  </style>
 </head>
 <body>
-  <div class="dashboard-container">
-    <!-- Header with Lion Logo -->
-    <header class="dashboard-header">
-      <div class="logo-title-group">
-        <img src="virtue_logo.png" alt="Virtue Logo" class="lion-logo">
-        <h1 id="reportTitle">Accountability Report for <span id="userName">User</span></h1>
+
+  <div class="container">
+    <header>
+      <div>
+        <h1>
+          <img src="virtue_logo.png" alt="Virtue Logo" style="height: 53px; width: auto; object-fit: contain;">
+          <span>Virtue Dashboard</span>
+        </h1>
+        <p id="dashboardSubheader">Accountability Telemetry Report</p>
       </div>
-      <div id="dateRange" class="date-badge">Loading...</div>
+      <div class="status-badge" id="statusBadge">⏳ Connecting to Data Vault...</div>
     </header>
 
-    <!-- Scorecard Metrics Banner -->
-    <section class="scorecard-banner">
-      <div id="statusBadge" class="status-badge status-clear">🟢 ALL CLEAR</div>
+    <div id="loadingState">
+      <h2>Fetching Vault Telemetry...</h2>
+      <p style="color: var(--text-muted);">Verifying payload from secure Google Drive vault.</p>
+    </div>
+    
+    <div id="errorState">
+      <h2>⚠️ Connection Error</h2>
+      <p id="errorMsg">Could not load dashboard. Please ensure the URL contains a valid fileId.</p>
+    </div>
+
+    <div id="dashboardView" class="hidden">
+      
+      <!-- 1. System Audit Notice / Flagged Items Banner (Renders at TOP when flagged) -->
+      <div id="auditNoticeContainer" class="hidden"></div>
+
+      <!-- 2. Metrics Summary Cards -->
       <div class="metrics-grid">
-        <div class="metric-card"><span class="metric-val" id="flaggedCount">0</span><span class="metric-label">Flagged Hits</span></div>
-        <div class="metric-card"><span class="metric-val" id="searchesCount">0</span><span class="metric-label">Total Searches</span></div>
-        <div class="metric-card"><span class="metric-val" id="domainsCount">0</span><span class="metric-label">Domains Visited</span></div>
-        <div class="metric-card"><span class="metric-val" id="activeDays">0 / 7</span><span class="metric-label">Active Days</span></div>
-      </div>
-    </section>
-
-    <!-- Priority Flagged Box (Renders at top ONLY when triggered) -->
-    <section id="attentionBox" class="attention-box hidden">
-      <h2>⚠️ ATTENTION REQUIRED</h2>
-      <ul id="flaggedList" class="flagged-list"></ul>
-    </section>
-
-    <!-- Daily Activity Bar Chart -->
-    <section class="chart-section">
-      <h2>📈 Daily Browsing Activity (Pages Visited Per Day)</h2>
-      <div id="dailyChart" class="daily-chart-bars"></div>
-    </section>
-
-    <!-- Side-by-Side Summary Section -->
-    <section class="summary-side-by-side">
-      <!-- Left: Top Visited Domains -->
-      <div class="summary-card">
-        <h2>📊 Top Visited Domains</h2>
-        <ol id="topDomainsList" class="top-domains-list"></ol>
-      </div>
-
-      <!-- Right: Search Engine Queries -->
-      <div class="summary-card">
-        <h2>🔍 Search Engine Queries</h2>
-        <ul id="searchesList" class="searches-list"></ul>
-        <button id="toggleSearchesBtn" class="btn-toggle hidden">▼ Show All Searches</button>
-      </div>
-    </section>
-
-    <!-- Full History Log -->
-    <section class="history-section">
-      <div class="history-header">
-        <h2>📊 Full History Log</h2>
-        <div class="history-controls">
-          <label>View: 
-            <select id="groupViewSelect">
-              <option value="grouped">Group by Domain</option>
-              <option value="flat">Flat List</option>
-            </select>
-          </label>
-          <label>Sort: 
-            <select id="sortSelect">
-              <option value="most_visited">Most Visited First</option>
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-            </select>
-          </label>
+        <div class="metric-card">
+          <h3>Active Days</h3>
+          <p class="value" id="metricActiveDays">0 / 7</p>
+          <div class="subtext">Days reported in window</div>
+        </div>
+        <div class="metric-card">
+          <h3>Web Searches</h3>
+          <p class="value" id="metricSearches">0</p>
+          <div class="subtext">Search phrases recorded</div>
+        </div>
+        <div class="metric-card">
+          <h3>Ignored Warnings</h3>
+          <p class="value" id="metricIgnoredWarnings">0</p>
+          <div class="subtext">Visited past restriction shield</div>
         </div>
       </div>
-      <div id="fullHistoryContainer" class="history-container"></div>
-    </section>
+
+      <!-- 3. 7-Day Daily Activity Chart -->
+      <div class="card">
+        <div class="card-header">📈 Daily Activity Trend (Pages Visited)</div>
+        <div style="padding: 15px 20px; height: 200px;">
+          <canvas id="activityChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Domain & Query Split -->
+      <div class="dashboard-grid">
+        <div class="card" style="margin-bottom: 0;">
+          <div class="card-header">📊 Top Visited Domains</div>
+          <table>
+            <thead><tr><th>Domain</th><th style="text-align: right;">Visits</th></tr></thead>
+            <tbody id="topDomainsTable"></tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-bottom: 0;">
+          <div class="card-header">🔍 Recent Search Queries</div>
+          <table>
+            <thead><tr><th>Time</th><th>Search Query</th></tr></thead>
+            <tbody id="searchQueryTable"></tbody>
+          </table>
+          <div id="searchExpandBar" style="padding: 10px 20px; text-align: center; border-top: 1px solid var(--border);" class="hidden">
+            <button id="toggleSearchesBtn" style="background: none; border: none; color: var(--primary); font-weight: bold; cursor: pointer; font-size: 13px;">
+              ▼ Show All Searches
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Complete Activity Feed -->
+      <div class="card" style="margin-top: 25px;">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+          <span>📋 Complete Activity Log (Rolling 7 Days)</span>
+          <div style="font-weight: normal; font-size: 12px; display: flex; gap: 12px;">
+            <label>View: 
+              <select id="logViewSelect">
+                <option value="flat" selected>Flat Timeline</option>
+                <option value="grouped">Group by Domain</option>
+              </select>
+            </label>
+            <label>Sort: 
+              <select id="logSortSelect">
+                <option value="newest" selected>Newest First</option>
+                <option value="oldest">Oldest First</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        
+        <div id="logTableContainer">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Device</th>
+                <th>Status</th>
+                <th>Page Title / Query</th>
+                <th>URL Path</th>
+              </tr>
+            </thead>
+            <tbody id="fullLogTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
   </div>
 
-  <script src="app.js"></script>
+  <script>
+    const GOOGLE_API_KEY = "AIzaSyBLE3aJNbjCEFTjDjrLplF-tAGJyskVGhw"; 
+    let globalBrowsingLogs = [];
+    let globalSearches = [];
+    let showAllSearches = false;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const fileId = urlParams.get("fileId");
+      if (!fileId) { showError("No File ID provided in URL."); return; }
+      fetchLogs(fileId);
+
+      document.getElementById("toggleSearchesBtn").addEventListener("click", () => {
+        showAllSearches = !showAllSearches;
+        renderSearches();
+      });
+
+      document.getElementById("logViewSelect").addEventListener("change", renderFullLog);
+      document.getElementById("logSortSelect").addEventListener("change", renderFullLog);
+    });
+
+    async function fetchLogs(fileId) {
+      try {
+        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${GOOGLE_API_KEY}`);
+        if (!response.ok) throw new Error("Could not access data vault.");
+        const data = await response.json();
+        processAndRender(data.logs || [], data.metadata || {});
+        document.getElementById("loadingState").classList.add("hidden");
+        document.getElementById("dashboardView").classList.remove("hidden");
+        document.getElementById("statusBadge").innerHTML = "🟢 Live Sync Active";
+      } catch (err) { showError(err.message); }
+    }
+
+    function processAndRender(allLogs, metadata) {
+      const heartbeats = allLogs.filter(log => log.type === "HEARTBEAT");
+      globalBrowsingLogs = allLogs.filter(log => log.type !== "HEARTBEAT" && log.type !== "AUDIT");
+
+      globalBrowsingLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      // 1. Header with Dynamic Name from Metadata
+      const profileName = metadata.userName || "User";
+      if (globalBrowsingLogs.length > 0) {
+        const oldest = new Date(globalBrowsingLogs[globalBrowsingLogs.length - 1].timestamp);
+        const newest = new Date(globalBrowsingLogs[0].timestamp);
+        document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName} • ${formatDateShort(oldest)} – ${formatDateShort(newest)}`;
+      }
+
+      // 2. Ignored Warnings
+      const ignoredWarningLogs = globalBrowsingLogs.filter(log => 
+        (log.title && log.title.includes("[VISITED]")) || 
+        (log.url && log.url.includes("virtue_bypass=true"))
+      );
+
+      // Audit Notice at Top
+      processAuditStream(heartbeats, ignoredWarningLogs);
+
+      // Metrics Computation
+      let domainCounts = {};
+      let activeDaysSet = new Set();
+      globalSearches = [];
+
+      const dailyCounts = {};
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        dailyCounts[d.toDateString()] = 0;
+      }
+
+      globalBrowsingLogs.forEach(log => {
+        const logDate = new Date(log.timestamp);
+        if (!isNaN(logDate)) {
+          const dateStr = logDate.toDateString();
+          activeDaysSet.add(dateStr);
+          if (dailyCounts[dateStr] !== undefined) dailyCounts[dateStr]++;
+        }
+
+        if (log.searchQuery && log.searchQuery.trim() !== "" && log.searchQuery.trim().toUpperCase() !== "N/A") {
+          globalSearches.push(log);
+        }
+
+        try {
+          if (log.url && log.url.startsWith("http")) {
+            const domain = new URL(log.url).hostname.replace('www.', '');
+            domainCounts[domain] = (domainCounts[domain] || 0) + 1;
+          }
+        } catch (e) {}
+      });
+
+      // Update Metric Cards
+      document.getElementById("metricActiveDays").textContent = `${Math.min(activeDaysSet.size, 7)} / 7 Days`;
+      const uniquePhrases = new Set(globalSearches.map(l => l.searchQuery.trim().toLowerCase()));
+      document.getElementById("metricSearches").textContent = uniquePhrases.size;
+
+      const warningsEl = document.getElementById("metricIgnoredWarnings");
+      warningsEl.textContent = ignoredWarningLogs.length;
+      if (ignoredWarningLogs.length > 0) warningsEl.classList.add("danger");
+      else warningsEl.classList.remove("danger");
+
+      renderDailyChart(dailyCounts);
+
+      // Top Domains Table
+      const sortedDomains = Object.entries(domainCounts).sort((a, b) => b[1] - a[1]).slice(0, 7);
+      document.getElementById("topDomainsTable").innerHTML = sortedDomains.map(([domain, count]) => `
+        <tr>
+          <td><a href="https://${domain}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: 500;">${domain}</a></td>
+          <td style="text-align: right; font-weight: bold;">${count}</td>
+        </tr>
+      `).join('') || "<tr><td colspan='2' style='color: var(--text-muted); text-align: center;'>No browsing recorded</td></tr>";
+
+      renderSearches();
+      renderFullLog();
+    }
+
+    function renderSearches() {
+      const searchQueryTable = document.getElementById("searchQueryTable");
+      const searchExpandBar = document.getElementById("searchExpandBar");
+      const toggleBtn = document.getElementById("toggleSearchesBtn");
+
+      if (globalSearches.length === 0) {
+        searchQueryTable.innerHTML = "<tr><td colspan='2' style='color: var(--text-muted); text-align: center; padding: 15px;'>No explicit search queries recorded.</td></tr>";
+        searchExpandBar.classList.add("hidden");
+        return;
+      }
+
+      const displayList = showAllSearches ? globalSearches : globalSearches.slice(0, 10);
+      searchQueryTable.innerHTML = displayList.map(log => `
+        <tr>
+          <td style="white-space: nowrap; color: var(--text-muted); font-size: 12px;">${formatTime(log.timestamp)}</td>
+          <td style="font-weight: 600; color: #202124;">"${log.searchQuery}"</td>
+        </tr>
+      `).join('');
+
+      if (globalSearches.length > 10) {
+        searchExpandBar.classList.remove("hidden");
+        toggleBtn.textContent = showAllSearches ? "▲ Show Less" : `▼ Show All ${globalSearches.length} Searches`;
+      } else {
+        searchExpandBar.classList.add("hidden");
+      }
+    }
+
+    function renderFullLog() {
+      const viewMode = document.getElementById("logViewSelect").value;
+      const sortMode = document.getElementById("logSortSelect").value;
+      const container = document.getElementById("logTableContainer");
+
+      let logsToRender = [...globalBrowsingLogs];
+      if (sortMode === "oldest") {
+        logsToRender.reverse();
+      }
+
+      if (viewMode === "flat") {
+        container.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Device</th>
+                <th>Status</th>
+                <th>Page Title / Query</th>
+                <th>URL Path</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${logsToRender.map(log => {
+                const isBypassed = (log.title && log.title.includes("[VISITED]")) || (log.url && log.url.includes("virtue_bypass=true"));
+                const statusBadge = isBypassed 
+                  ? `<span class="flag-badge">⚠️ Ignored Warning</span>` 
+                  : `<span style="color: #198754; font-size: 12px; font-weight: 500;">✓ Clear</span>`;
+                const deviceName = log.device || "Desktop";
+                const hasValidSearch = log.searchQuery && log.searchQuery.trim() !== "" && log.searchQuery.trim().toUpperCase() !== "N/A";
+                const searchSubline = hasValidSearch ? `<br><span style="font-size: 11px; color: #1a73e8; font-weight: 600;">🔍 "${log.searchQuery}"</span>` : '';
+
+                return `
+                  <tr style="${isBypassed ? 'background-color: #fffaf9;' : ''}">
+                    <td style="white-space: nowrap; font-size: 12px; color: var(--text-muted);">${formatTime(log.timestamp)}</td>
+                    <td><span class="device-badge">💻 ${deviceName}</span></td>
+                    <td>${statusBadge}</td>
+                    <td>
+                      <div class="text-truncate" style="font-weight: 500;" title="${log.title || 'Untitled'}">${log.title || "Untitled"}</div>
+                      ${searchSubline}
+                    </td>
+                    <td>
+                      <a href="${log.url}" target="_blank" class="text-truncate" style="color: var(--text-muted); text-decoration: none; font-size: 12px;" title="${log.url}">${log.url}</a>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `;
+      } else {
+        // Grouped by Domain
+        const groups = {};
+        logsToRender.forEach(log => {
+          try {
+            const domain = new URL(log.url).hostname.replace('www.', '');
+            if (!groups[domain]) groups[domain] = [];
+            groups[domain].push(log);
+          } catch(e) {}
+        });
+
+        const sortedGroups = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+
+        container.innerHTML = sortedGroups.map(([domain, items]) => `
+          <details class="domain-group">
+            <summary>
+              <span>🌐 <strong>${domain}</strong></span>
+              <span style="color: var(--text-muted); font-size: 12px;">${items.length} visits</span>
+            </summary>
+            <ul class="domain-sublist">
+              ${items.map(item => `
+                <li>
+                  <span style="color: var(--text-muted); font-size: 11px;">[${formatTime(item.timestamp)}]</span>
+                  <a href="${item.url}" target="_blank" style="color: #1a73e8; text-decoration: none;">${item.title || item.url}</a>
+                </li>
+              `).join('')}
+            </ul>
+          </details>
+        `).join('');
+      }
+    }
+
+    function processAuditStream(heartbeats, ignoredWarningLogs) {
+      const devices = {};
+      heartbeats.forEach(hb => {
+        const devName = hb.device || "Primary Device";
+        if (!devices[devName]) devices[devName] = [];
+        devices[devName].push(hb);
+      });
+
+      let noticeHtml = "";
+      let hasAuditNotice = false;
+
+      Object.entries(devices).forEach(([devName, beats]) => {
+        beats.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        const latest = beats[beats.length - 1];
+
+        if (!latest.incognitoAllowed) {
+          hasAuditNotice = true;
+          const unmonitoredBeats = beats.filter(b => b.incognitoAllowed === false);
+          const firstOff = new Date(unmonitoredBeats[0].timestamp);
+
+          if (!latest.hasEverEnabledIncognito) {
+            noticeHtml += `<p style="margin: 4px 0;">ℹ️ <strong>${devName}:</strong> Incognito monitoring setup incomplete since installation.</p>`;
+          } else {
+            noticeHtml += `<p style="margin: 4px 0;">⚠️ <strong>${devName}:</strong> Incognito monitoring is currently disabled (Unmonitored since ${formatDateShort(firstOff)}).</p>`;
+          }
+        }
+      });
+
+      if (ignoredWarningLogs.length > 0) {
+        hasAuditNotice = true;
+        noticeHtml += `<div style="margin-top: 8px;"><strong>🛑 Restricted Sites Visited (${ignoredWarningLogs.length} Ignored Warnings):</strong><ul>`;
+        ignoredWarningLogs.forEach(log => {
+          const timeStr = formatTime(log.timestamp);
+          const dev = log.device || "Desktop";
+          const title = log.title ? log.title.replace("[VISITED]", "").trim() : "Untitled";
+          noticeHtml += `<li><strong>${timeStr}</strong> (${dev}) — <em>"${title}"</em> <br><a href="${log.url}" target="_blank" style="color: #664d03; font-size: 11px;">${log.url}</a></li>`;
+        });
+        noticeHtml += `</ul></div>`;
+      }
+
+      const noticeContainer = document.getElementById("auditNoticeContainer");
+
+      if (hasAuditNotice) {
+        noticeContainer.className = "audit-notice";
+        noticeContainer.innerHTML = `<h4>⚠️ System Audit Notice</h4>${noticeHtml}`;
+      } else {
+        noticeContainer.className = "hidden";
+      }
+    }
+
+    function renderDailyChart(dailyCounts) {
+      const ctx = document.getElementById('activityChart').getContext('2d');
+      const labels = Object.keys(dailyCounts).map(dStr => {
+        const d = new Date(dStr);
+        return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+      });
+      const dataValues = Object.values(dailyCounts);
+
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{ data: dataValues, backgroundColor: 'rgba(25, 135, 84, 0.25)', borderColor: '#198754', borderWidth: 1.5, borderRadius: 4 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      });
+    }
+
+    function formatDateShort(d) { return d.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
+    function formatTime(iso) { return iso ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' }) : "Unknown"; }
+    function showError(msg) {
+      document.getElementById("loadingState").classList.add("hidden");
+      document.getElementById("errorState").classList.remove("hidden");
+      document.getElementById("errorMsg").textContent = msg;
+    }
+  </script>
 </body>
 </html>
