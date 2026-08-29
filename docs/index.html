@@ -105,6 +105,24 @@
       background: #fce8e6; color: #d93025; padding: 3px 8px;
       border-radius: 4px; font-size: 11px; font-weight: bold;
     }
+
+    /* Mobile Responsive Overrides */
+    @media (max-width: 600px) {
+      .container { padding: 15px 10px; }
+      header { flex-direction: column; align-items: flex-start; gap: 10px; }
+      
+      .text-truncate {
+        max-width: 100% !important;
+        white-space: normal !important;
+        word-break: break-all !important;
+        overflow: visible !important;
+      }
+
+      th, td {
+        padding: 8px 10px;
+        font-size: 12px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -185,18 +203,20 @@
       <!-- Complete Activity Feed -->
       <div class="card" style="margin-top: 25px;">
         <div class="card-header">📋 Complete Activity Log (Rolling 7 Days)</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Device</th>
-              <th>Status</th>
-              <th>Page Title / Query</th>
-              <th>URL Path</th>
-            </tr>
-          </thead>
-          <tbody id="fullLogTable"></tbody>
-        </table>
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Device</th>
+                <th>Status</th>
+                <th>Page Title / Query</th>
+                <th>URL Path</th>
+              </tr>
+            </thead>
+            <tbody id="fullLogTable"></tbody>
+          </table>
+        </div>
       </div>
 
     </div>
