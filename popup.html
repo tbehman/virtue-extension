@@ -5,200 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Virtue Protection</title>
   <link rel="stylesheet" href="popup.css">
-  <style>
-    :root {
-      --primary: #198754;
-      --primary-hover: #146c43;
-      --bg: #f8f9fa;
-      --card-bg: #ffffff;
-      --text-main: #212529;
-      --text-muted: #6c757d;
-      --danger: #dc3545;
-      --border: #e9ecef;
-      --warning-bg: #fff8e1;
-      --warning-border: #ffc107;
-      --warning-text: #856404;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      width: 320px;
-      margin: 0;
-      padding: 14px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: var(--bg);
-      color: var(--text-main);
-    }
-
-    .hidden { display: none !important; }
-
-    /* Uniform Width Containers */
-    .brand-header {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      background: var(--card-bg);
-      padding: 10px 14px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      margin-bottom: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
-    }
-
-    .brand-header img {
-      height: 38px;
-      width: auto;
-      object-fit: contain;
-    }
-
-    .brand-header h1, .brand-header h2 {
-      margin: 0;
-      font-size: 18px;
-      color: var(--primary);
-      font-weight: 700;
-      line-height: 1.1;
-    }
-
-    .brand-header p {
-      margin: 2px 0 0 0;
-      font-size: 11px;
-      color: var(--text-muted);
-      font-weight: 500;
-    }
-
-    .card {
-      width: 100%;
-      background: var(--card-bg);
-      padding: 12px 14px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      margin-bottom: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-    }
-
-    .info-label {
-      font-size: 10px;
-      font-weight: 700;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 2px;
-      display: block;
-    }
-
-    .info-value {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-main);
-      word-break: break-all;
-    }
-
-    .btn {
-      width: 100%;
-      padding: 9px 12px;
-      border: none;
-      border-radius: 6px;
-      font-weight: 700;
-      font-size: 13px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      transition: background-color 0.15s ease;
-    }
-
-    .btn-primary { background: var(--primary); color: #ffffff; }
-    .btn-primary:hover { background: var(--primary-hover); }
-    .btn-secondary { background: #e9ecef; color: #495057; }
-    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-main); }
-
-    input[type="text"], input[type="password"], input[type="email"] {
-      width: 100%;
-      padding: 7px 10px;
-      margin: 4px 0 10px 0;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      font-size: 12px;
-    }
-
-    input:focus {
-      outline: none;
-      border-color: var(--primary);
-    }
-
-    /* Segmented Strategy Control */
-    .segmented-control {
-      display: flex;
-      gap: 4px;
-      background: #f1f3f4;
-      padding: 3px;
-      border-radius: 6px;
-      margin-bottom: 10px;
-    }
-
-    .btn-segmented {
-      flex: 1;
-      padding: 6px;
-      font-size: 11px;
-      border: none;
-      background: transparent;
-      color: var(--text-muted);
-      cursor: pointer;
-      border-radius: 4px;
-      font-weight: 600;
-    }
-
-    .btn-segmented.active {
-      background: var(--primary);
-      color: #ffffff;
-    }
-
-    /* Domain List Styles */
-    ul.domain-list {
-      list-style: none;
-      padding: 0;
-      margin: 8px 0 0 0;
-      max-height: 110px;
-      overflow-y: auto;
-    }
-
-    ul.domain-list li {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 5px 0;
-      border-bottom: 1px solid var(--border);
-      font-size: 12px;
-    }
-
-    .delete-btn {
-      background: none;
-      border: none;
-      color: var(--danger);
-      font-size: 14px;
-      cursor: pointer;
-      padding: 0 4px;
-      font-weight: bold;
-    }
-
-    .badge {
-      background: #e6f4ea;
-      color: #137333;
-      padding: 3px 8px;
-      border-radius: 12px;
-      font-size: 10px;
-      font-weight: 700;
-    }
-  </style>
 </head>
 <body>
 
-  <!-- Brand Header Container (Persistent Across Views) -->
   <div class="brand-header">
     <img src="docs/virtue_logo.png" alt="Virtue Logo">
     <div>
@@ -207,12 +16,9 @@
     </div>
   </div>
 
-  <!-- ========================================== -->
-  <!-- 1. ONBOARDING SETUP SCREEN -->
-  <!-- ========================================== -->
   <div id="setupScreen" class="screen hidden">
     <div id="authStepContainer" class="card">
-      <p style="font-size: 12px; color: var(--text-muted); text-align: center; margin: 0 0 12px 0;">
+      <p style="font-size: 12px; color: var(--text-muted); text-align: center; margin-bottom: 12px;">
         Connect your primary Google Account to link your accountability vault.
       </p>
       <button id="authGoogleBtn" class="btn btn-outline" style="background-color: #ffffff;">
@@ -226,12 +32,10 @@
       </button>
     </div>
 
-    <!-- Found Vault Banner (Secondary Devices) -->
     <div id="existingVaultNotice" class="hidden" style="background: #e8f5e9; border-left: 3px solid var(--primary); padding: 8px 10px; border-radius: 6px; margin-bottom: 10px; font-size: 11px; color: #1b5e20;">
       <span id="existingVaultText">👋 Welcome back! Found existing Virtue vault.</span>
     </div>
 
-    <!-- Dynamic Setup Profile Form -->
     <div id="profileFormFields" class="card hidden">
       <div id="userNameGroup">
         <label class="info-label" for="userNameInput">Your Name</label>
@@ -261,22 +65,17 @@
     <p id="status" class="status-text" style="font-size: 11px; text-align: center; margin-top: 6px;"></p>
   </div>
 
-  <!-- ========================================== -->
-  <!-- 2. LIVE DASHBOARD SCREEN -->
-  <!-- ========================================== -->
   <div id="dashboardScreen" class="screen hidden">
-    <!-- Active Status Row -->
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 0 2px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 0 2px;">
       <span id="syncBadge" class="badge">🟢 LIVE SYNC ACTIVE</span>
-      <button id="openSettingsBtn" title="Settings" style="background: none; border: none; font-size: 13px; cursor: pointer; color: var(--text-muted); font-weight: 600;">⚙️ Settings</button>
+      <button id="openSettingsBtn" title="Settings" style="background: none; border: none; font-size: 12px; cursor: pointer; color: var(--text-muted); font-weight: 600;">⚙️ Settings</button>
     </div>
 
-    <!-- Account Details Card -->
     <div class="card">
       <div style="margin-bottom: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span class="info-label">CONNECTED ACCOUNT</span>
-          <button id="refreshAccountBtn" title="Refresh Account" style="background: none; border: none; cursor: pointer; font-size: 11px; opacity: 0.6; padding: 0;">🔄</button>
+          <button id="refreshAccountBtn" title="Refresh Account" style="background: none; border: none; cursor: pointer; font-size: 11px; opacity: 0.6;">🔄</button>
         </div>
         <div id="accountDisplay" class="info-value">Loading...</div>
       </div>
@@ -290,7 +89,6 @@
       <span>📊 Open Web Dashboard</span>
     </a>
 
-    <!-- PIN Unlock Prompt Area -->
     <div id="pinPromptArea" class="card hidden" style="border-color: var(--primary);">
       <label id="pinLabel" for="verifyPinInput" class="info-label" style="color: var(--primary);">Enter 4-Digit Master PIN</label>
       <div style="display: flex; gap: 6px; margin-top: 4px;">
@@ -302,15 +100,11 @@
     </div>
   </div>
 
-  <!-- ========================================== -->
-  <!-- 3. PIN-PROTECTED SETTINGS SCREEN -->
-  <!-- ========================================== -->
   <div id="settingsScreen" class="screen hidden">
     <button id="backToDashboardBtn" class="btn btn-secondary" style="margin-bottom: 10px; font-size: 12px; padding: 7px;">
       ← Back to Dashboard
     </button>
 
-    <!-- Profile Management Card -->
     <div class="card">
       <div class="info-label" style="font-size: 11px; margin-bottom: 8px;">PROFILE SETTINGS</div>
       
@@ -333,10 +127,9 @@
       <p id="profileStatusText" style="font-size: 11px; text-align: center; margin-top: 4px; display: none;"></p>
     </div>
 
-    <!-- Filtering Rules Card -->
     <div class="card">
       <div id="domainSectionTitle" class="info-label" style="font-size: 11px; margin-bottom: 2px;">🚫 CUSTOM BLOCKLIST</div>
-      <p id="domainSectionSubtext" style="font-size: 11px; color: var(--text-muted); margin: 0 0 8px 0;">
+      <p id="domainSectionSubtext" style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
         Explicitly listed domains will be intercepted.
       </p>
 
@@ -354,7 +147,6 @@
       </div>
     </div>
 
-    <!-- Storage Connection Card -->
     <div class="card" id="managementRow" style="border-color: var(--warning-border);">
       <div class="info-label" style="font-size: 11px; margin-bottom: 4px;">GOOGLE STORAGE CONNECTION</div>
       <div id="settingsUserEmail" class="info-value" style="margin-bottom: 8px;">Loading...</div>
@@ -369,10 +161,9 @@
     </div>
   </div>
 
-  <!-- Forgot PIN Modal -->
-  <div id="forgotPinModal" class="card hidden" style="position: absolute; top: 20px; left: 14px; right: 14px; z-index: 100; border-color: var(--danger); box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+  <div id="forgotPinModal" class="card hidden" style="position: absolute; top: 20px; left: 12px; right: 12px; z-index: 100; border-color: var(--danger); box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
     <div class="info-label" style="color: var(--danger); font-size: 11px; margin-bottom: 6px;">🔑 RESET MASTER PIN</div>
-    <p style="font-size: 11px; color: var(--text-main); line-height: 1.4; margin: 0 0 10px 0;">
+    <p style="font-size: 11px; color: var(--text-main); line-height: 1.4; margin-bottom: 10px;">
       For strict security, resetting your 4-digit PIN requires reinstalling the Virtue extension from Chrome.
     </p>
     <button id="closeForgotPinBtn" class="btn btn-secondary" style="padding: 6px;">Understood</button>
