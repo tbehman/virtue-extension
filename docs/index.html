@@ -106,21 +106,57 @@
       border-radius: 4px; font-size: 11px; font-weight: bold;
     }
 
-    /* Mobile Responsive Overrides */
+    /* Mobile Responsive Card-Stack Layout */
     @media (max-width: 600px) {
-      .container { padding: 15px 10px; }
-      header { flex-direction: column; align-items: flex-start; gap: 10px; }
-      
+      .container { padding: 12px 8px; }
+      header { flex-direction: column; align-items: flex-start; gap: 8px; }
+
+      /* Convert activity table into a stacked card feed on phones */
+      #fullLogTable, #fullLogTable tr, #fullLogTable td {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+      }
+
+      .card table thead {
+        display: none;
+      }
+
+      #fullLogTable tr {
+        border-bottom: 1px solid var(--border);
+        padding: 12px 10px;
+        background: #ffffff;
+      }
+
+      /* Inline top metadata row (Time, Device, Status) */
+      #fullLogTable td:nth-child(1),
+      #fullLogTable td:nth-child(2),
+      #fullLogTable td:nth-child(3) {
+        display: inline-block;
+        padding: 2px 6px 2px 0;
+        border: none;
+        font-size: 11px;
+      }
+
+      /* Page title row */
+      #fullLogTable td:nth-child(4) {
+        display: block;
+        padding: 6px 0 2px 0;
+        border: none;
+      }
+
+      /* Full-width URL row */
+      #fullLogTable td:nth-child(5) {
+        display: block;
+        padding: 2px 0 0 0;
+        border: none;
+      }
+
       .text-truncate {
         max-width: 100% !important;
         white-space: normal !important;
         word-break: break-all !important;
         overflow: visible !important;
-      }
-
-      th, td {
-        padding: 8px 10px;
-        font-size: 12px;
       }
     }
   </style>
@@ -203,20 +239,18 @@
       <!-- Complete Activity Feed -->
       <div class="card" style="margin-top: 25px;">
         <div class="card-header">📋 Complete Activity Log (Rolling 7 Days)</div>
-        <div style="overflow-x: auto;">
-          <table>
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Device</th>
-                <th>Status</th>
-                <th>Page Title / Query</th>
-                <th>URL Path</th>
-              </tr>
-            </thead>
-            <tbody id="fullLogTable"></tbody>
-          </table>
-        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Device</th>
+              <th>Status</th>
+              <th>Page Title / Query</th>
+              <th>URL Path</th>
+            </tr>
+          </thead>
+          <tbody id="fullLogTable"></tbody>
+        </table>
       </div>
 
     </div>
@@ -350,7 +384,6 @@
         
         const deviceName = log.device || "Desktop";
 
-        // FIX: Only render search query subline if query exists and is NOT N/A
         const hasValidSearch = log.searchQuery && log.searchQuery.trim() !== "" && log.searchQuery.trim().toUpperCase() !== "N/A";
         const searchSubline = hasValidSearch ? `<br><span style="font-size: 11px; color: #1a73e8; font-weight: 600;">🔍 "${log.searchQuery}"</span>` : '';
 
