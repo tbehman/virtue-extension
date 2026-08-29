@@ -22,6 +22,21 @@ function getDeviceInfo() {
   return `${os} (Chrome)`;
 }
 
+// Automatically update Drive permissions so GitHub Pages dashboard can read the file
+function makeFileUnlisted(fileId) {
+  authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      role: "reader",
+      type: "anyone"
+    })
+  })
+  .then(res => res.json())
+  .then(data => console.log("Drive file permissions automatically set to Anyone with link:", data))
+  .catch(err => console.error("Error setting Drive file permissions:", err));
+}
+
 // ==========================================
 // 1. AUTHENTICATION & TOKEN MANAGERS
 // ==========================================
@@ -266,26 +281,13 @@ function flushBufferToDriveJson() {
     // Deduplicate current buffer entries by URL
     let uniqueLogs = Array.from(new Set(buffer.map(a => a.url))).map(url => buffer.find(a => a.url === url));
 
-    chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
-      if (!isAllowed) {
-        uniqueLogs.unshift({
-          url: "[ALERT] Incognito Tracking is DISABLED in settings!",
-          title: "[ALERT] Incognito Tracking is DISABLED in settings!",
-          searchQuery: "N/A",
-          device: getDeviceInfo(),
-          timestamp: getCleanTimestamp(),
-          flagged: true
-        });
-      }
-
-      if (!driveFileId) {
-        findOrCreateDriveJsonFile((fileId) => {
-          syncLogsToDriveFile(fileId, uniqueLogs);
-        });
-      } else {
-        syncLogsToDriveFile(driveFileId, uniqueLogs);
-      }
-    });
+    if (!driveFileId) {
+      findOrCreateDriveJsonFile((fileId) => {
+        syncLogsToDriveFile(fileId, uniqueLogs);
+      });
+    } else {
+      syncLogsToDriveFile(driveFileId, uniqueLogs);
+    }
   });
 }
 
@@ -297,6 +299,7 @@ function findOrCreateDriveJsonFile(callback) {
     .then(data => {
       if (data.files && data.files.length > 0) {
         const fileId = data.files[0].id;
+        makeFileUnlisted(fileId); // Ensure permissions are open
         chrome.storage.local.set({ driveFileId: fileId }, () => callback(fileId));
       } else {
         // Create new virtue_logs.json file with local profile metadata
@@ -322,6 +325,7 @@ function findOrCreateDriveJsonFile(callback) {
           })
           .then(res => res.json())
           .then(newFile => {
+            makeFileUnlisted(newFile.id); // Automatically set unlisted permissions on creation
             chrome.storage.local.set({ driveFileId: newFile.id }, () => callback(newFile.id));
           });
         });

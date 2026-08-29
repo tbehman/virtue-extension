@@ -330,6 +330,10 @@
         
         const deviceName = log.device || "Desktop";
 
+        // FIX: Only render search query subline if query exists and is NOT N/A
+        const hasValidSearch = log.searchQuery && log.searchQuery.trim() !== "" && log.searchQuery.trim().toUpperCase() !== "N/A";
+        const searchSubline = hasValidSearch ? `<br><span style="font-size: 11px; color: #1a73e8; font-weight: 600;">🔍 "${log.searchQuery}"</span>` : '';
+
         return `
         <tr style="${isBypassed ? 'background-color: #fffaf9;' : ''}">
           <td style="white-space: nowrap; font-size: 12px; color: var(--text-muted);">${formatTime(log.timestamp)}</td>
@@ -337,7 +341,7 @@
           <td>${statusBadge}</td>
           <td>
             <div class="text-truncate" style="font-weight: 500;" title="${log.title || 'Untitled'}">${log.title || "Untitled"}</div>
-            ${log.searchQuery ? `<br><span style="font-size: 11px; color: #1a73e8; font-weight: 600;">🔍 "${log.searchQuery}"</span>` : ''}
+            ${searchSubline}
           </td>
           <td>
             <a href="${log.url}" target="_blank" class="text-truncate" style="color: var(--text-muted); text-decoration: none; font-size: 12px;" title="${log.url}">${log.url}</a>
