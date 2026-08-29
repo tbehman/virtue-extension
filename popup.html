@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Virtue Protection</title>
+  <link rel="stylesheet" href="popup.css">
   <style>
     :root {
       --primary: #198754;
@@ -14,12 +15,15 @@
       --text-muted: #6c757d;
       --danger: #dc3545;
       --border: #e9ecef;
+      --warning-bg: #fff8e1;
+      --warning-border: #ffc107;
+      --warning-text: #856404;
     }
 
     body {
       width: 320px;
       margin: 0;
-      padding: 16px;
+      padding: 14px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background-color: var(--bg);
       color: var(--text-main);
@@ -28,17 +32,17 @@
 
     .hidden { display: none !important; }
 
-    /* Header Container - White Card Base for Dark Theme Contrast */
+    /* Top Brand Card - Clean Light Theme Container */
     .brand-header {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
       background: var(--card-bg);
-      padding: 10px 12px;
-      border-radius: 8px;
+      padding: 10px 14px;
+      border-radius: 10px;
       border: 1px solid var(--border);
-      margin-bottom: 16px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
 
     .brand-header img {
@@ -47,64 +51,39 @@
       object-fit: contain;
     }
 
-    .brand-header h1 {
+    .brand-header h1, .brand-header h2 {
       margin: 0;
       font-size: 18px;
       color: var(--primary);
       font-weight: 700;
+      line-height: 1.1;
     }
 
     .brand-header p {
-      margin: 0;
+      margin: 2px 0 0 0;
       font-size: 11px;
       color: var(--text-muted);
+      font-weight: 500;
     }
 
+    /* Structured Sections */
     .card {
       background: var(--card-bg);
-      padding: 14px;
-      border-radius: 8px;
+      padding: 12px 14px;
+      border-radius: 10px;
       border: 1px solid var(--border);
       margin-bottom: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
-    }
-
-    .btn {
-      width: 100%;
-      padding: 10px;
-      border: none;
-      border-radius: 6px;
-      font-weight: bold;
-      font-size: 13px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      box-sizing: border-box;
-    }
-
-    .btn-primary { background: var(--primary); color: #ffffff; }
-    .btn-primary:hover { background: var(--primary-hover); }
-    .btn-secondary { background: #e9ecef; color: #495057; }
-    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-main); }
-
-    input[type="text"], input[type="password"], input[type="email"] {
-      width: 100%;
-      padding: 8px 10px;
-      margin: 6px 0 12px 0;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      box-sizing: border-box;
-      font-size: 13px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
 
     .info-label {
-      font-size: 11px;
+      font-size: 10px;
+      font-weight: 700;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
       margin-bottom: 2px;
+      display: block;
     }
 
     .info-value {
@@ -114,34 +93,76 @@
       word-break: break-all;
     }
 
-    .toggle-group {
+    .btn {
+      width: 100%;
+      padding: 9px 12px;
+      border: none;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
       display: flex;
-      gap: 6px;
-      margin-bottom: 12px;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-sizing: border-box;
+      transition: background-color 0.15s ease;
     }
 
-    .toggle-btn {
+    .btn-primary { background: var(--primary); color: #ffffff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-secondary { background: #e9ecef; color: #495057; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-main); }
+    .btn-text { background: none; border: none; color: var(--primary); cursor: pointer; text-align: left; padding: 0; }
+
+    input[type="text"], input[type="password"], input[type="email"] {
+      width: 100%;
+      padding: 7px 10px;
+      margin: 4px 0 10px 0;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-sizing: border-box;
+      font-size: 12px;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    /* Segmented Strategy Control */
+    .segmented-control {
+      display: flex;
+      gap: 4px;
+      background: #f1f3f4;
+      padding: 3px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+    }
+
+    .btn-segmented {
       flex: 1;
       padding: 6px;
       font-size: 11px;
-      border: 1px solid var(--border);
-      background: #f1f3f4;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
       cursor: pointer;
       border-radius: 4px;
       font-weight: 600;
     }
 
-    .toggle-btn.active {
+    .btn-segmented.active {
       background: var(--primary);
       color: #ffffff;
-      border-color: var(--primary);
     }
 
+    /* Domain List Styles */
     ul.domain-list {
       list-style: none;
       padding: 0;
       margin: 8px 0 0 0;
-      max-height: 120px;
+      max-height: 110px;
       overflow-y: auto;
     }
 
@@ -149,7 +170,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 4px 0;
+      padding: 5px 0;
       border-bottom: 1px solid var(--border);
       font-size: 12px;
     }
@@ -161,67 +182,107 @@
       font-size: 14px;
       cursor: pointer;
       padding: 0 4px;
+      font-weight: bold;
+    }
+
+    /* Status Badge */
+    .badge {
+      background: #e6f4ea;
+      color: #137333;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 700;
     }
   </style>
 </head>
 <body>
 
-  <!-- Brand Header Container (Visible Across Views) -->
+  <!-- Brand Header Container (Persistent Across Views) -->
   <div class="brand-header">
-    <img src="virtue_logo.png" alt="Virtue Logo">
+    <img src="docs/virtue_logo.png" alt="Virtue Logo">
     <div>
-      <h1>Virtue</h1>
+      <h2>Virtue</h2>
       <p>Accountability & Protection</p>
     </div>
   </div>
 
-  <!-- 1. SETUP / ONBOARDING SCREEN -->
-  <div id="setupScreen" class="hidden">
+  <!-- ========================================== -->
+  <!-- 1. ONBOARDING SETUP SCREEN -->
+  <!-- ========================================== -->
+  <div id="setupScreen" class="screen hidden">
     <div id="authStepContainer" class="card">
-      <p style="font-size: 13px; margin: 0 0 12px 0; color: var(--text-muted);">Connect your primary Google Account to link your accountability vault.</p>
-      <button id="authGoogleBtn" class="btn btn-primary">Connect Google Account</button>
+      <p style="font-size: 12px; color: var(--text-muted); text-align: center; margin: 0 0 12px 0;">
+        Connect your primary Google Account to link your accountability vault.
+      </p>
+      <button id="authGoogleBtn" class="btn btn-outline" style="background-color: #ffffff;">
+        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+          <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+          <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+        <span>Connect Google Account</span>
+      </button>
     </div>
 
-    <div id="profileFormFields" class="card hidden">
-      <div id="existingVaultNotice" class="hidden" style="background: #e8f5e9; padding: 8px; border-radius: 6px; margin-bottom: 10px;">
-        <span id="existingVaultText" style="font-size: 12px; color: #1b5e20; font-weight: 600;"></span>
-      </div>
+    <!-- Found Vault Banner (Secondary Devices) -->
+    <div id="existingVaultNotice" class="hidden" style="background: #e8f5e9; border-left: 3px solid var(--primary); padding: 8px 10px; border-radius: 6px; margin-bottom: 10px; font-size: 11px; color: #1b5e20;">
+      <span id="existingVaultText">👋 Welcome back! Found existing Virtue vault.</span>
+    </div>
 
+    <!-- Dynamic Setup Profile Form -->
+    <div id="profileFormFields" class="card hidden">
       <div id="userNameGroup">
-        <label class="info-label">Your Name</label>
-        <input type="text" id="userNameInput" placeholder="John Doe">
+        <label class="info-label" for="userNameInput">Your Name</label>
+        <input type="text" id="userNameInput" placeholder="e.g., John Adams">
       </div>
 
       <div id="partnerNameGroup">
-        <label class="info-label">Partner's Name</label>
-        <input type="text" id="partnerNameInput" placeholder="Jane Doe">
+        <label class="info-label" for="partnerNameInput">Accountability Partner's Name</label>
+        <input type="text" id="partnerNameInput" placeholder="e.g., George Washington">
       </div>
 
       <div id="partnerEmailGroup">
-        <label class="info-label">Partner's Email</label>
-        <input type="email" id="partnerEmailInput" placeholder="partner@example.com">
+        <label class="info-label" for="partnerEmailInput">Partner's Email Address</label>
+        <input type="email" id="partnerEmailInput" placeholder="e.g., trustedfriend@email.com">
       </div>
 
       <div>
-        <label id="pinLabelText" class="info-label">Create 4-Digit Master PIN</label>
-        <input type="password" id="masterPinInput" maxlength="4" placeholder="••••">
+        <label id="pinLabelText" class="info-label" for="masterPinInput">Create a 4-Digit Master PIN</label>
+        <input type="password" id="masterPinInput" maxlength="4" placeholder="••••" inputmode="numeric" required>
       </div>
 
-      <button id="completeSetupBtn" class="btn btn-primary" style="margin-top: 8px;">Complete Setup</button>
+      <button id="completeSetupBtn" class="btn btn-primary" style="margin-top: 6px;">
+        Complete Setup & Activate
+      </button>
     </div>
-    <div id="status" style="font-size: 12px; text-align: center; margin-top: 8px;"></div>
+
+    <p id="status" class="status-text" style="font-size: 11px; text-align: center; margin-top: 6px;"></p>
   </div>
 
-  <!-- 2. MAIN DASHBOARD SCREEN -->
-  <div id="dashboardScreen" class="hidden">
+  <!-- ========================================== -->
+  <!-- 2. LIVE DASHBOARD SCREEN -->
+  <!-- ========================================== -->
+  <div id="dashboardScreen" class="screen hidden">
+    <!-- Active Status Row -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 0 2px;">
+      <span id="syncBadge" class="badge">🟢 LIVE SYNC ACTIVE</span>
+      <button id="openSettingsBtn" title="Settings" style="background: none; border: none; font-size: 15px; cursor: pointer; color: var(--text-muted);">⚙️ Settings</button>
+    </div>
+
+    <!-- Account Details Card -->
     <div class="card">
       <div style="margin-bottom: 10px;">
-        <div class="info-label">Connected Account</div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span class="info-label">CONNECTED ACCOUNT</span>
+          <button id="refreshAccountBtn" title="Refresh Account" style="background: none; border: none; cursor: pointer; font-size: 11px; opacity: 0.6; padding: 0;">🔄</button>
+        </div>
         <div id="accountDisplay" class="info-value">Loading...</div>
       </div>
       <div>
-        <div class="info-label">Accountability Partner</div>
-        <div id="partnerDisplayEmail" class="info-value">Not Set</div>
+        <span class="info-label">ACCOUNTABILITY PARTNER</span>
+        <div id="partnerDisplayEmail" class="info-value">Loading...</div>
       </div>
     </div>
 
@@ -229,71 +290,92 @@
       <span>📊 Open Web Dashboard</span>
     </a>
 
-    <button id="openSettingsBtn" class="btn btn-outline">
-      <span>⚙️ Settings & Rules</span>
-    </button>
-
-    <!-- PIN Prompt Modal / Area -->
-    <div id="pinPromptArea" class="card hidden" style="margin-top: 10px; border-color: var(--primary);">
-      <div class="info-label" style="color: var(--primary);">Enter PIN to Unlock Settings</div>
-      <input type="password" id="verifyPinInput" maxlength="4" placeholder="••••">
-      <div style="display: flex; gap: 6px;">
-        <button id="submitPinBtn" class="btn btn-primary" style="flex: 1;">Unlock</button>
-        <button id="cancelPinBtn" class="btn btn-secondary" style="flex: 1;">Cancel</button>
+    <!-- PIN Unlock Prompt Area -->
+    <div id="pinPromptArea" class="card hidden" style="border-color: var(--primary);">
+      <label id="pinLabel" for="verifyPinInput" class="info-label" style="color: var(--primary);">Enter 4-Digit Master PIN</label>
+      <div style="display: flex; gap: 6px; margin-top: 4px;">
+        <input type="password" id="verifyPinInput" maxlength="4" placeholder="••••" inputmode="numeric" style="margin: 0; flex: 1;">
+        <button id="submitPinBtn" class="btn btn-primary" style="width: auto; padding: 0 14px;">Unlock</button>
+        <button id="cancelPinBtn" class="btn btn-secondary" style="width: auto; padding: 0 10px;">Cancel</button>
       </div>
-      <a id="forgotPinLink" href="#" style="font-size: 11px; color: var(--text-muted); display: block; text-align: center; margin-top: 8px;">Forgot PIN?</a>
+      <a id="forgotPinLink" href="#" style="font-size: 11px; color: var(--text-muted); display: block; margin-top: 6px; text-align: center; text-decoration: none;">Forgot PIN?</a>
     </div>
   </div>
 
-  <!-- 3. SETTINGS SCREEN -->
-  <div id="settingsScreen" class="hidden">
-    <button id="backToDashboardBtn" class="btn btn-secondary" style="margin-bottom: 10px;">← Back to Dashboard</button>
+  <!-- ========================================== -->
+  <!-- 3. PIN-PROTECTED SETTINGS SCREEN -->
+  <!-- ========================================== -->
+  <div id="settingsScreen" class="screen hidden">
+    <button id="backToDashboardBtn" class="btn btn-secondary" style="margin-bottom: 10px; font-size: 12px; padding: 7px;">
+      ← Back to Dashboard
+    </button>
 
-    <!-- Profile Edit Card -->
+    <!-- Profile Management Card -->
     <div class="card">
-      <div class="info-label" style="margin-bottom: 8px; font-weight: bold;">Profile Settings</div>
-      <label class="info-label">Your Name</label>
-      <input type="text" id="editUserNameInput">
-      <label class="info-label">Partner Name</label>
-      <input type="text" id="editPartnerNameInput">
-      <label class="info-label">Partner Email</label>
-      <input type="email" id="editPartnerEmailInput">
-      <button id="saveProfileBtn" class="btn btn-primary">Save Profile</button>
-      <div id="profileStatusText" style="font-size: 11px; margin-top: 6px; display: none;"></div>
-    </div>
-
-    <!-- Domain Filtering Rules Card -->
-    <div class="card">
-      <div id="domainSectionTitle" class="info-label" style="font-weight: bold; margin-bottom: 4px;">FILTER MODE</div>
-      <div id="domainSectionSubtext" style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Configure web interception rules.</div>
+      <div class="info-label" style="font-size: 11px; margin-bottom: 8px;">PROFILE SETTINGS</div>
       
-      <div class="toggle-group">
-        <button id="modeBlocklistBtn" class="toggle-btn active">Blocklist</button>
-        <button id="modeWhitelistBtn" class="toggle-btn">Whitelist</button>
+      <label class="info-label" for="editUserNameInput">YOUR NAME</label>
+      <input type="text" id="editUserNameInput">
+
+      <label class="info-label" for="editPartnerNameInput">PARTNER NAME</label>
+      <input type="text" id="editPartnerNameInput">
+
+      <label class="info-label" for="editPartnerEmailInput">PARTNER EMAIL</label>
+      <input type="email" id="editPartnerEmailInput">
+
+      <div id="emailWarningNotice" style="background: var(--warning-bg); border-left: 3px solid var(--warning-border); padding: 6px 8px; border-radius: 4px; font-size: 10px; color: var(--warning-text); margin-bottom: 8px;">
+        ⚠️ Changing email dispatches an alert to your existing partner.
       </div>
 
-      <div style="display: flex; gap: 4px;">
-        <input type="text" id="domainInput" placeholder="website.com" style="margin: 0; flex: 1;">
-        <button id="addDomainBtn" class="btn btn-primary" style="width: auto; padding: 0 12px;">Add</button>
-      </div>
-
-      <ul id="domainView" class="domain-list"></ul>
+      <button id="saveProfileBtn" class="btn btn-primary">
+        Save Profile
+      </button>
+      <p id="profileStatusText" style="font-size: 11px; text-align: center; margin-top: 4px; display: none;"></p>
     </div>
 
-    <!-- Account Switch Section -->
-    <div class="card" style="border-color: #ffc107;">
-      <div class="info-label">Google Storage Connection</div>
-      <div id="settingsUserEmail" style="font-size: 12px; margin: 4px 0 8px 0; font-weight: 500;">Connected</div>
-      <button id="switchStorageAccountBtn" class="btn btn-outline" style="color: var(--danger); border-color: var(--danger);">Switch Google Account</button>
-      <div style="font-size: 10px; color: var(--text-muted); margin-top: 6px;">Switching dispatches a courtesy alert to <span id="disclaimerPartnerEmail">partner</span>.</div>
+    <!-- Filtering Rules Card -->
+    <div class="card">
+      <div id="domainSectionTitle" class="info-label" style="font-size: 11px; margin-bottom: 2px;">🚫 CUSTOM BLOCKLIST</div>
+      <p id="domainSectionSubtext" style="font-size: 11px; color: var(--text-muted); margin: 0 0 8px 0;">
+        Explicitly listed domains will be intercepted.
+      </p>
+
+      <div class="segmented-control">
+        <button id="modeBlocklistBtn" class="btn-segmented active">Blocklist</button>
+        <button id="modeWhitelistBtn" class="btn-segmented">Whitelist</button>
+      </div>
+
+      <div id="domainContainer">
+        <div id="editDomainRow" style="display: flex; gap: 6px; margin-bottom: 6px;">
+          <input type="text" id="domainInput" placeholder="e.g., website.com" style="margin: 0; flex: 1;">
+          <button id="addDomainBtn" class="btn btn-primary" style="width: auto; padding: 0 14px;">Add</button>
+        </div>
+        <ul id="domainView" class="domain-list"></ul>
+      </div>
+    </div>
+
+    <!-- Storage Connection Card -->
+    <div class="card" id="managementRow" style="border-color: var(--warning-border);">
+      <div class="info-label" style="font-size: 11px; margin-bottom: 4px;">GOOGLE STORAGE CONNECTION</div>
+      <div id="settingsUserEmail" class="info-value" style="margin-bottom: 8px;">Loading...</div>
+
+      <button id="switchStorageAccountBtn" class="btn btn-outline" style="color: var(--danger); border-color: var(--danger); font-size: 12px; padding: 7px;">
+        Switch Google Account
+      </button>
+
+      <div id="switchAccountDisclaimer" style="font-size: 10px; color: var(--text-muted); margin-top: 6px;">
+        ⚠️ Sends a security alert to <strong id="disclaimerPartnerEmail">...</strong>.
+      </div>
     </div>
   </div>
 
   <!-- Forgot PIN Modal -->
-  <div id="forgotPinModal" class="card hidden" style="position: absolute; top: 20px; left: 16px; right: 16px; z-index: 100; border-color: var(--danger);">
-    <div class="info-label" style="color: var(--danger); font-weight: bold;">PIN Recovery</div>
-    <p style="font-size: 12px; color: var(--text-main); line-height: 1.4;">To maintain accountability, PIN resets require re-authenticating your primary Google Account or contacting your partner.</p>
-    <button id="closeForgotPinBtn" class="btn btn-secondary">Close</button>
+  <div id="forgotPinModal" class="card hidden" style="position: absolute; top: 20px; left: 14px; right: 14px; z-index: 100; border-color: var(--danger); box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+    <div class="info-label" style="color: var(--danger); font-size: 11px; margin-bottom: 6px;">🔑 RESET MASTER PIN</div>
+    <p style="font-size: 11px; color: var(--text-main); line-height: 1.4; margin: 0 0 10px 0;">
+      For strict security, resetting your 4-digit PIN requires reinstalling the Virtue extension from Chrome.
+    </p>
+    <button id="closeForgotPinBtn" class="btn btn-secondary" style="padding: 6px;">Understood</button>
   </div>
 
   <script src="popup.js"></script>
