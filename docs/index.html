@@ -15,6 +15,9 @@
       --text-main: #212529;
       --text-muted: #6c757d;
       --danger: #dc3545;
+      --danger-bg: #f8d7da;
+      --danger-border: #f5c2c7;
+      --danger-text: #842029;
       --warning-bg: #fff3cd;
       --warning-border: #ffe69c;
       --warning-text: #664d03;
@@ -32,29 +35,52 @@
 
     header {
       display: flex; justify-content: space-between; align-items: flex-end;
-      margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid var(--border);
+      margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid var(--border);
     }
     header h1 { margin: 0; color: var(--primary); font-size: 26px; display: flex; align-items: center; gap: 12px; }
     header p { margin: 4px 0 0 0; color: var(--text-muted); font-size: 14px; font-weight: 500; }
     
     .status-badge {
-      background: #e8f5e9; color: #1b5e20; padding: 6px 12px; border-radius: 20px;
-      font-size: 12px; font-weight: bold; display: flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border-radius: 20px;
+      font-size: 13px; font-weight: bold; display: inline-flex; align-items: center; gap: 6px;
+      margin-bottom: 15px;
     }
+    .status-clear { background: #d1e7dd; color: #0f5132; }
+    .status-flagged { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
+
+    /* Scorecard 4-Box Grid */
+    .metrics-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 15px; margin-bottom: 25px;
+    }
+    @media (max-width: 768px) {
+      .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .metric-card {
+      background: var(--card-bg); padding: 16px 20px; border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border);
+      text-align: center;
+    }
+    .metric-card h3 { margin: 0 0 6px 0; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .metric-card .value { font-size: 24px; font-weight: bold; color: var(--text-main); margin: 0; }
+    .metric-card .value.danger { color: var(--danger); }
+    .metric-card .subtext { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
     /* Priority Audit Notice Banner */
     .audit-notice {
-      background: var(--warning-bg);
-      border: 1px solid var(--warning-border);
-      color: var(--warning-text);
-      padding: 14px 20px;
+      background: var(--danger-bg);
+      border: 1px solid var(--danger-border);
+      color: var(--danger-text);
+      padding: 16px 20px;
       border-radius: 8px;
       margin-bottom: 25px;
       font-size: 13px;
     }
-    .audit-notice h4 { margin: 0 0 8px 0; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+    .audit-notice h4 { margin: 0 0 8px 0; font-size: 15px; color: var(--danger-text); display: flex; align-items: center; gap: 6px; }
     .audit-notice ul { margin: 6px 0 0 0; padding-left: 20px; }
-    .audit-notice li { margin-bottom: 4px; }
+    .audit-notice li { margin-bottom: 6px; }
+    .audit-notice a { color: var(--danger-text); }
 
     #loadingState, #errorState {
       text-align: center; padding: 50px; background: var(--card-bg);
@@ -62,19 +88,6 @@
     }
     #errorState { color: var(--danger); display: none; }
     .hidden { display: none !important; }
-
-    .metrics-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 15px; margin-bottom: 25px;
-    }
-    .metric-card {
-      background: var(--card-bg); padding: 16px 20px; border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border);
-    }
-    .metric-card h3 { margin: 0 0 6px 0; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    .metric-card .value { font-size: 24px; font-weight: bold; color: var(--text-main); margin: 0; }
-    .metric-card .value.danger { color: var(--danger); }
-    .metric-card .subtext { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
     .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
     @media (max-width: 768px) { .dashboard-grid { grid-template-columns: 1fr; } }
@@ -157,7 +170,6 @@
         </h1>
         <p id="dashboardSubheader">Accountability Telemetry Report</p>
       </div>
-      <div class="status-badge" id="statusBadge">⏳ Connecting to Data Vault...</div>
     </header>
 
     <div id="loadingState">
@@ -172,29 +184,39 @@
 
     <div id="dashboardView" class="hidden">
       
-      <!-- 1. System Audit Notice / Flagged Items Banner (Renders at TOP when flagged) -->
-      <div id="auditNoticeContainer" class="hidden"></div>
+      <!-- Top Row: Status Badge -->
+      <div>
+        <div id="statusBadge" class="status-badge status-clear">🟢 ALL CLEAR</div>
+      </div>
 
-      <!-- 2. Metrics Summary Cards -->
+      <!-- 4 Scorecard Metrics Cards -->
       <div class="metrics-grid">
+        <div class="metric-card">
+          <h3>Flagged Events</h3>
+          <p class="value" id="metricFlagged">0</p>
+          <div class="subtext">Restriction overrides</div>
+        </div>
+        <div class="metric-card">
+          <h3>Total Searches</h3>
+          <p class="value" id="metricSearches">0</p>
+          <div class="subtext">Unique search phrases</div>
+        </div>
+        <div class="metric-card">
+          <h3>Domains Visited</h3>
+          <p class="value" id="metricDomains">0</p>
+          <div class="subtext">Unique websites</div>
+        </div>
         <div class="metric-card">
           <h3>Active Days</h3>
           <p class="value" id="metricActiveDays">0 / 7</p>
-          <div class="subtext">Days reported in window</div>
-        </div>
-        <div class="metric-card">
-          <h3>Web Searches</h3>
-          <p class="value" id="metricSearches">0</p>
-          <div class="subtext">Search phrases recorded</div>
-        </div>
-        <div class="metric-card">
-          <h3>Ignored Warnings</h3>
-          <p class="value" id="metricIgnoredWarnings">0</p>
-          <div class="subtext">Visited past restriction shield</div>
+          <div class="subtext">Days reported</div>
         </div>
       </div>
 
-      <!-- 3. 7-Day Daily Activity Chart -->
+      <!-- Attention Required Banner (Renders below scorecard ONLY when flagged) -->
+      <div id="auditNoticeContainer" class="hidden"></div>
+
+      <!-- 7-Day Daily Activity Chart -->
       <div class="card">
         <div class="card-header">📈 Daily Activity Trend (Pages Visited)</div>
         <div style="padding: 15px 20px; height: 200px;">
@@ -294,7 +316,6 @@
         processAndRender(data.logs || [], data.metadata || {});
         document.getElementById("loadingState").classList.add("hidden");
         document.getElementById("dashboardView").classList.remove("hidden");
-        document.getElementById("statusBadge").innerHTML = "🟢 Live Sync Active";
       } catch (err) { showError(err.message); }
     }
 
@@ -312,13 +333,23 @@
         document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName} • ${formatDateShort(oldest)} – ${formatDateShort(newest)}`;
       }
 
-      // 2. Ignored Warnings
+      // 2. Identify Ignored Warnings / Bypassed Hits
       const ignoredWarningLogs = globalBrowsingLogs.filter(log => 
         (log.title && log.title.includes("[VISITED]")) || 
         (log.url && log.url.includes("virtue_bypass=true"))
       );
 
-      // Audit Notice at Top
+      // Status Badge Update
+      const statusBadge = document.getElementById("statusBadge");
+      if (ignoredWarningLogs.length > 0) {
+        statusBadge.className = "status-badge status-flagged";
+        statusBadge.innerHTML = `🔴 ${ignoredWarningLogs.length} ITEM(S) NEED REVIEW`;
+      } else {
+        statusBadge.className = "status-badge status-clear";
+        statusBadge.innerHTML = "🟢 ALL CLEAR";
+      }
+
+      // Render Audit Notice below metrics
       processAuditStream(heartbeats, ignoredWarningLogs);
 
       // Metrics Computation
@@ -353,15 +384,16 @@
         } catch (e) {}
       });
 
-      // Update Metric Cards
-      document.getElementById("metricActiveDays").textContent = `${Math.min(activeDaysSet.size, 7)} / 7 Days`;
-      const uniquePhrases = new Set(globalSearches.map(l => l.searchQuery.trim().toLowerCase()));
-      document.getElementById("metricSearches").textContent = uniquePhrases.size;
+      // Populate 4 Metric Cards
+      const flaggedEl = document.getElementById("metricFlagged");
+      flaggedEl.textContent = ignoredWarningLogs.length;
+      if (ignoredWarningLogs.length > 0) flaggedEl.classList.add("danger");
+      else flaggedEl.classList.remove("danger");
 
-      const warningsEl = document.getElementById("metricIgnoredWarnings");
-      warningsEl.textContent = ignoredWarningLogs.length;
-      if (ignoredWarningLogs.length > 0) warningsEl.classList.add("danger");
-      else warningsEl.classList.remove("danger");
+      const uniqueSearches = new Set(globalSearches.map(l => l.searchQuery.trim().toLowerCase()));
+      document.getElementById("metricSearches").textContent = uniqueSearches.size;
+      document.getElementById("metricDomains").textContent = Object.keys(domainCounts).length;
+      document.getElementById("metricActiveDays").textContent = `${Math.min(activeDaysSet.size, 7)} / 7`;
 
       renderDailyChart(dailyCounts);
 
@@ -456,7 +488,6 @@
           </table>
         `;
       } else {
-        // Grouped by Domain
         const groups = {};
         logsToRender.forEach(log => {
           try {
@@ -522,7 +553,7 @@
           const timeStr = formatTime(log.timestamp);
           const dev = log.device || "Desktop";
           const title = log.title ? log.title.replace("[VISITED]", "").trim() : "Untitled";
-          noticeHtml += `<li><strong>${timeStr}</strong> (${dev}) — <em>"${title}"</em> <br><a href="${log.url}" target="_blank" style="color: #664d03; font-size: 11px;">${log.url}</a></li>`;
+          noticeHtml += `<li><strong>${timeStr}</strong> (${dev}) — <em>"${title}"</em> <br><a href="${log.url}" target="_blank" style="color: #842029; font-size: 11px;">${log.url}</a></li>`;
         });
         noticeHtml += `</ul></div>`;
       }
@@ -531,7 +562,7 @@
 
       if (hasAuditNotice) {
         noticeContainer.className = "audit-notice";
-        noticeContainer.innerHTML = `<h4>⚠️ System Audit Notice</h4>${noticeHtml}`;
+        noticeContainer.innerHTML = `<h4>⚠️ ATTENTION REQUIRED</h4>${noticeHtml}`;
       } else {
         noticeContainer.className = "hidden";
       }
