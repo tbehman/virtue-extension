@@ -10,7 +10,7 @@ const CORE_EXPLICIT_TERMS = [
   "beeg", "porn300", "heavy-r", "motherless", "xkeez", "tnaflix", "xgroovy",
 
   // Core Graphic Terms & Act Slang
-  "porn", "porno", "pornography", "xxx", "nsfw", "anal", "blowjob", "handjob",
+  "porn", "porno", "pornography", "xxx", "nsfw", "anal", "analsex", "blowjob", "handjob",
   "creampie", "squirt", "squirting", "gangbang", "bukkake", "deepthroat", "cum",
   "cumshot", "facial", "rimjob", "anilingus", "facesitting", "peg", "pegging",
   "orgasm", "ejaculation", "hardcore", "softcore", "erotic", "erotica", "hentai",
@@ -21,12 +21,12 @@ const CORE_EXPLICIT_TERMS = [
   // Explicit Descriptors & Slang
   "boobs", "tits", "titties", "pussy", "vagina", "clitoris", "penis", "dick",
   "cock", "dildo", "vibrator", "sybian", "hentai", "shemale", "tranny", "femboy",
-  "milf", "dilf", "gilf", "pinay", "latina", "ebony", "bbw", "milf", "tradwife"
+  "milf", "dilf", "gilf", "pinay", "latina", "ebony", "bbw", "tradwife"
 ];
 
-// 2. Compound Word Generators (e.g., sexvideo, adultcams, nakedpics, xvideo)
+// 2. Compound Word Generators (e.g., sexvideo, adultcams, nakedpics, analsex, xvideo)
 const COMPOUND_PATTERN = 
-  "\\b(sex|adult|erotic|nsfw|xxx|cam|nude|naked|porn|x)(vid|vids|video|videos|tube|cams|cam|site|sites|pic|pics|club|hub|star|stars|movie|movies)\\b";
+  "\\b(anal|sex|adult|erotic|nsfw|xxx|cam|nude|naked|porn|x)(sex|vid|vids|video|videos|tube|cams|cam|site|sites|pic|pics|club|hub|star|stars|movie|movies)\\b";
 
 // 3. High-Risk Intent Phrases & Search Contexts
 const PHRASE_PATTERNS = [
@@ -43,7 +43,7 @@ export const COMPILED_KEYWORD_REGEXES = [
   // Group 1: Single explicit word matching with strict word boundaries
   new RegExp(`\\b(${CORE_EXPLICIT_TERMS.join('|')})\\b`, 'i'),
 
-  // Group 2: Compound merged words
+  // Group 2: Compound merged words (e.g., analsex, sexvideo)
   new RegExp(COMPOUND_PATTERN, 'i'),
 
   // Group 3: Intent-paired phrase patterns
