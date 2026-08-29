@@ -528,7 +528,7 @@ function syncLogsToDriveFile(fileId, newLogs) {
 }
 
 // ==========================================
-// 4. DYNAMIC INTERCEPTION ENGINE
+// 4. HIGH-PERFORMANCE INTERCEPTION ENGINE (O(1) LOOKUP)
 // ==========================================
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   if (details.frameId !== 0) return; 
@@ -539,27 +539,34 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   chrome.storage.local.get({ filterMode: "blocklist", customBlacklist: [], customWhitelist: [] }, (settings) => {
     try {
       const url = new URL(urlStr);
-      const hostname = url.hostname.toLowerCase();
+      const hostname = url.hostname.toLowerCase().trim();
       const isYahooMediaLeak = hostname.startsWith("images.search.yahoo.com") || hostname.startsWith("video.search.yahoo.com");
 
       let shouldBlock = false;
 
-      if (settings.filterMode === "whitelist") {
-        const inWhitelist = settings.customWhitelist.some(domain => {
+      // Helper function for custom blacklist/whitelist matching
+      const matchesCustomList = (domainList) => {
+        return domainList.some(domain => {
           const cleanDomain = domain.toLowerCase().trim();
           return hostname === cleanDomain || hostname.endsWith("." + cleanDomain);
         });
-        shouldBlock = !inWhitelist;
-      } else {
-        const inCustomBlacklist = settings.customBlacklist.some(domain => {
-          const cleanDomain = domain.toLowerCase().trim();
-          return hostname === cleanDomain || hostname.endsWith("." + cleanDomain);
-        });
+      };
 
-        const inStaticShield = DEFAULT_BLOCKLIST.some(domain => {
-          const cleanDomain = domain.toLowerCase().trim();
-          return hostname === cleanDomain || hostname.endsWith("." + cleanDomain);
-        });
+      if (settings.filterMode === "whitelist") {
+        shouldBlock = !matchesCustomList(settings.customWhitelist);
+      } else {
+        const inCustomBlacklist = matchesCustomList(settings.customBlacklist);
+
+        // O(1) Constant-time check across 114,000+ DEFAULT_BLOCKLIST Set
+        let inStaticShield = false;
+        const parts = hostname.split('.');
+        for (let i = 0; i < parts.length - 1; i++) {
+          const rootDomain = parts.slice(i).join('.');
+          if (DEFAULT_BLOCKLIST.has(rootDomain)) {
+            inStaticShield = true;
+            break;
+          }
+        }
 
         shouldBlock = inCustomBlacklist || inStaticShield || isYahooMediaLeak;
       }
