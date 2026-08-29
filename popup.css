@@ -47,8 +47,9 @@ body {
   gap: 12px;
 }
 
+/* Virtue Logo Scaled Up 20% (38px -> 46px) */
 .brand-header img {
-  height: 38px;
+  height: 46px;
   width: auto;
   object-fit: contain;
 }
@@ -67,9 +68,31 @@ body {
   font-weight: 500;
 }
 
+/* Status Badge Pill */
+.badge {
+  background: #e6f4ea;
+  color: #137333;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Info Data Groups & Typographic Differentiation */
+.info-group {
+  margin-bottom: 12px;
+}
+
+.info-group:last-child {
+  margin-bottom: 0;
+}
+
 .info-label {
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 500; /* Subdued regular weight */
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -79,11 +102,12 @@ body {
 
 .info-value {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700; /* Bold email display */
   color: var(--text-main);
   word-break: break-all;
 }
 
+/* Standardized Buttons */
 .btn {
   width: 100%;
   padding: 10px 12px;
@@ -168,13 +192,4 @@ ul.domain-list li {
   cursor: pointer;
   padding: 0 4px;
   font-weight: bold;
-}
-
-.badge {
-  background: #e6f4ea;
-  color: #137333;
-  padding: 3px 8px;
-  border-radius: 12px;
-  font-size: 10px;
-  font-weight: 700;
 }
