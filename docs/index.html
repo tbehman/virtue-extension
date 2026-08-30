@@ -288,10 +288,10 @@
   </div>
 
   <script>
+    const GOOGLE_API_KEY = "AIzaSyBLE3aJNbjCEFTjDjrLplF-tAGJyskVGhw"; 
     let globalBrowsingLogs = [];
     let globalSearches = [];
     let showAllSearches = false;
-    let activityChartInstance = null;
 
     // ============================================================
     // EMBEDDED WEB CRYPTO HELPERS (AES-GCM DECRYPTION)
@@ -362,8 +362,7 @@
 
     async function fetchLogs(fileId, keyHex) {
       try {
-        const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-        const response = await fetch(downloadUrl);
+        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${GOOGLE_API_KEY}`);
         if (!response.ok) throw new Error(`Vault access failed (Status ${response.status}). Check Google Drive sharing permissions.`);
         
         const data = await response.json();
@@ -383,11 +382,9 @@
           logs = data.logs || [];
         }
 
-        // Unhide dashboard view BEFORE processing charts so the DOM canvas has width/height
+        processAndRender(logs, data.metadata || {});
         document.getElementById("loadingState").classList.add("hidden");
         document.getElementById("dashboardView").classList.remove("hidden");
-
-        processAndRender(logs, data.metadata || {});
       } catch (err) { showError(err.message); }
     }
 
@@ -647,11 +644,7 @@
       });
       const dataValues = Object.values(dailyCounts);
 
-      if (activityChartInstance) {
-        activityChartInstance.destroy();
-      }
-
-      activityChartInstance = new Chart(ctx, {
+      new Chart(ctx, {
         type: 'bar',
         data: {
           labels: labels,
