@@ -292,6 +292,7 @@
     let globalBrowsingLogs = [];
     let globalSearches = [];
     let showAllSearches = false;
+    let activityChartInstance = null;
 
     // ============================================================
     // EMBEDDED WEB CRYPTO HELPERS (AES-GCM DECRYPTION)
@@ -382,9 +383,11 @@
           logs = data.logs || [];
         }
 
-        processAndRender(logs, data.metadata || {});
+        // Unhide dashboard view BEFORE processing charts so the DOM canvas has width/height
         document.getElementById("loadingState").classList.add("hidden");
         document.getElementById("dashboardView").classList.remove("hidden");
+
+        processAndRender(logs, data.metadata || {});
       } catch (err) { showError(err.message); }
     }
 
@@ -644,7 +647,11 @@
       });
       const dataValues = Object.values(dailyCounts);
 
-      new Chart(ctx, {
+      if (activityChartInstance) {
+        activityChartInstance.destroy();
+      }
+
+      activityChartInstance = new Chart(ctx, {
         type: 'bar',
         data: {
           labels: labels,
