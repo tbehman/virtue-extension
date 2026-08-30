@@ -382,9 +382,11 @@
           logs = data.logs || [];
         }
 
-        processAndRender(logs, data.metadata || {});
+        // Unhide view BEFORE processing charts so the canvas element has non-zero DOM dimensions
         document.getElementById("loadingState").classList.add("hidden");
         document.getElementById("dashboardView").classList.remove("hidden");
+
+        processAndRender(logs, data.metadata || {});
       } catch (err) { showError(err.message); }
     }
 
