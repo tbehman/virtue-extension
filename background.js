@@ -1,5 +1,6 @@
 import { DEFAULT_BLOCKLIST } from './defaultBlocklist.js';
 import { COMPILED_KEYWORD_REGEXES } from './defaultKeywords.js';
+import { deriveKeyFromPin, encryptData, decryptData } from './cryptoUtils.js';
 
 const SAFESEARCH_RULE_IDS = [101, 102, 103];
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -23,7 +24,24 @@ function getDeviceInfo() {
   return `${os} (Chrome)`;
 }
 
-// Sanitizes raw URLs and query parameters for clean regex evaluation
+// Helper to get active derived key for current user
+async function getActiveEncryptionKey() {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(["userPin", "userEmail"], (res) => {
+      const pin = res.userPin || "1234";
+      chrome.identity.getProfileUserInfo({ accountStatus: "ANY" }, async (userInfo) => {
+        const email = (userInfo && userInfo.email) ? userInfo.email : (res.userEmail || "user@virtue.app");
+        try {
+          const { key, keyHex } = await deriveKeyFromPin(pin, email);
+          resolve({ key, keyHex });
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+  });
+}
+
 function sanitizeStringForTesting(str) {
   if (!str) return "";
   try {
@@ -130,7 +148,10 @@ async function authenticatedFetch(url, options = {}) {
 // 1.1 GMAIL API DISPATCHER
 // ==========================================
 async function sendGmailNotification({ toEmail, subject, bodyHtml, bodyText }) {
-  if (!toEmail) return;
+  if (!toEmail) {
+    console.error("Virtue Email Error: No recipient email provided.");
+    return false;
+  }
 
   const encodedSubject = `=?UTF-8?B?${btoa(encodeURIComponent(subject).replace(/%([0-9A-F]{2})/g, (m, p1) => String.fromCharCode('0x' + p1)))}?=`;
   const isHtml = Boolean(bodyHtml);
@@ -155,9 +176,18 @@ async function sendGmailNotification({ toEmail, subject, bodyHtml, bodyText }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ raw: encodedMessage })
     });
-    if (!res.ok) console.error("Gmail API failed with status:", res.status);
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`Virtue Email Error [Status ${res.status}]:`, errText);
+      return false;
+    }
+
+    console.log("Virtue Email Success: Dispatched to", toEmail);
+    return true;
   } catch (err) {
-    console.error("Error sending email via Gmail API:", err);
+    console.error("Virtue Email Fetch Exception:", err);
+    return false;
   }
 }
 
@@ -168,11 +198,12 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create("flushBuffer", { periodInMinutes: 1 });
   chrome.alarms.create("checkWeeklyDigest", { periodInMinutes: 1440 });
 
-  chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist"], (result) => {
+  chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist", "userPin"], (result) => {
     const updates = {};
     if (!result.filterMode) updates.filterMode = "blocklist";
     if (!result.customBlacklist) updates.customBlacklist = ["facebook.com", "instagram.com"];
     if (!result.customWhitelist) updates.customWhitelist = ["wikipedia.org", "google.com"];
+    if (!result.userPin) updates.userPin = "1234";
 
     if (Object.keys(updates).length > 0) {
       chrome.storage.local.set(updates, () => { updateDynamicSafeSearchRules(); });
@@ -236,9 +267,16 @@ async function checkAndSendWeeklyDigest() {
     if (now - lastSent < SEVEN_DAYS_MS) return;
 
     try {
+      const { key, keyHex } = await getActiveEncryptionKey();
       const res = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${data.driveFileId}?alt=media`);
       const fileData = await res.json();
-      const logs = fileData.logs || [];
+      
+      let logs = [];
+      if (fileData.encryptedData && fileData.iv) {
+        logs = await decryptData(fileData.encryptedData, fileData.iv, key);
+      } else {
+        logs = fileData.logs || [];
+      }
 
       const validSearches = logs.filter(l => l.searchQuery && l.searchQuery.trim() !== "" && l.searchQuery.trim().toUpperCase() !== "N/A");
       const ignoredWarnings = logs.filter(l => (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
@@ -256,7 +294,7 @@ async function checkAndSendWeeklyDigest() {
 
       const userName = data.userName || "User";
       const partnerName = data.partnerName || "Partner";
-      const dashboardUrl = `https://tbehman.github.io/virtue-extension/?fileId=${data.driveFileId}`;
+      const dashboardUrl = `https://tbehman.github.io/virtue-extension/?fileId=${data.driveFileId}#key=${keyHex}`;
 
       let warningsHtml = "";
       if (ignoredWarnings.length > 0) {
@@ -328,7 +366,6 @@ async function checkAndSendWeeklyDigest() {
             </ul>
             <div style="text-align: center; border-top: 1px solid #e9ecef; padding-top: 20px; margin-top: 20px;">
               <a href="${dashboardUrl}" target="_blank" style="background-color: #198754; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">View Full Web Dashboard ➔</a>
-              <p style="margin-top: 12px; font-size: 11px; color: #6c757d;">Direct Link: <a href="${dashboardUrl}" style="color: #1a73e8;">${dashboardUrl}</a></p>
             </div>
             <p style="font-size: 12px; color: #6c757d; text-align: center; margin-top: 25px;">Blessings,<br><strong>Virtue Accountability Team</strong></p>
           </div>
@@ -374,11 +411,15 @@ function findOrCreateDriveJsonFile(callback) {
         makeFileUnlisted(fileId);
         chrome.storage.local.set({ driveFileId: fileId }, () => callback(fileId));
       } else {
-        chrome.storage.local.get(["userName", "partnerName", "partnerEmail"], (profile) => {
+        chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "userEmail"], async (profile) => {
+          const { key } = await getActiveEncryptionKey();
+          const emptyEncrypted = await encryptData([], key);
+
           const metadata = { name: "virtue_logs.json", mimeType: "application/json" };
           const initialContent = JSON.stringify({
-            metadata: { version: "1.0", userName: profile.userName || "", partnerName: profile.partnerName || "", partnerEmail: profile.partnerEmail || "" },
-            logs: []
+            metadata: { version: "1.0", userName: profile.userName || "", partnerName: profile.partnerName || "", partnerEmail: profile.partnerEmail || "", userEmail: profile.userEmail || "" },
+            iv: emptyEncrypted.iv,
+            encryptedData: emptyEncrypted.ciphertext
           });
 
           authenticatedFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
@@ -403,12 +444,21 @@ function syncLogsToDriveFile(fileId, newLogs) {
   })
   .then(async (res) => {
     const etag = res.headers.get("ETag");
-    let fileData = { metadata: { version: "1.0" }, logs: [] };
+    let fileData = { metadata: { version: "1.0" } };
+    let existingLogs = [];
 
-    try { fileData = await res.json(); } catch (e) {}
+    const { key } = await getActiveEncryptionKey();
 
-    chrome.storage.local.get(["userName", "partnerName", "partnerEmail"], (localProfile) => {
-      const existingLogs = fileData.logs || [];
+    try { 
+      fileData = await res.json(); 
+      if (fileData.encryptedData && fileData.iv) {
+        existingLogs = await decryptData(fileData.encryptedData, fileData.iv, key);
+      } else if (fileData.logs) {
+        existingLogs = fileData.logs;
+      }
+    } catch (e) {}
+
+    chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "userEmail"], async (localProfile) => {
       const combined = [...existingLogs, ...newLogs];
 
       const cutoffTime = Date.now() - SEVEN_DAYS_MS;
@@ -417,7 +467,7 @@ function syncLogsToDriveFile(fileId, newLogs) {
         return !isNaN(logTime) && logTime > cutoffTime;
       });
 
-      fileData.logs = rollingLogs;
+      const encrypted = await encryptData(rollingLogs, key);
 
       const driveMeta = fileData.metadata || {};
       const profileUpdates = {};
@@ -425,16 +475,22 @@ function syncLogsToDriveFile(fileId, newLogs) {
       if (!localProfile.userName && driveMeta.userName) profileUpdates.userName = driveMeta.userName;
       if (!localProfile.partnerName && driveMeta.partnerName) profileUpdates.partnerName = driveMeta.partnerName;
       if (!localProfile.partnerEmail && driveMeta.partnerEmail) profileUpdates.partnerEmail = driveMeta.partnerEmail;
+      if (!localProfile.userEmail && driveMeta.userEmail) profileUpdates.userEmail = driveMeta.userEmail;
 
       if (Object.keys(profileUpdates).length > 0) chrome.storage.local.set(profileUpdates);
 
-      fileData.metadata = {
-        ...driveMeta,
-        version: "1.0",
-        userName: localProfile.userName || driveMeta.userName || "",
-        partnerName: localProfile.partnerName || driveMeta.partnerName || "",
-        partnerEmail: localProfile.partnerEmail || driveMeta.partnerEmail || "",
-        lastUpdated: getCleanTimestamp()
+      const updatedPayload = {
+        metadata: {
+          ...driveMeta,
+          version: "1.0",
+          userName: localProfile.userName || driveMeta.userName || "",
+          partnerName: localProfile.partnerName || driveMeta.partnerName || "",
+          partnerEmail: localProfile.partnerEmail || driveMeta.partnerEmail || "",
+          userEmail: localProfile.userEmail || driveMeta.userEmail || "",
+          lastUpdated: getCleanTimestamp()
+        },
+        iv: encrypted.iv,
+        encryptedData: encrypted.ciphertext
       };
 
       const uploadHeaders = { "Content-Type": "application/json" };
@@ -443,7 +499,7 @@ function syncLogsToDriveFile(fileId, newLogs) {
       authenticatedFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
         method: "PATCH",
         headers: uploadHeaders,
-        body: JSON.stringify(fileData, null, 2)
+        body: JSON.stringify(updatedPayload)
       })
       .then(uploadRes => {
         if (uploadRes.status === 412) {
@@ -582,6 +638,47 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
 // 6. MESSAGE LISTENERS FOR POPUP ACTIONS
 // ==========================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.type === "RECOVER_USER_PIN") {
+    chrome.storage.local.get(["userPin", "userName", "userEmail"], (data) => {
+      chrome.identity.getProfileUserInfo({ accountStatus: "ANY" }, async (userInfo) => {
+        const targetEmail = (userInfo && userInfo.email) ? userInfo.email : data.userEmail;
+
+        if (!targetEmail) {
+          console.error("Virtue PIN Recovery Error: Profile email not available");
+          sendResponse({ success: false, error: "No user email found" });
+          return;
+        }
+
+        const userPin = data.userPin || "1234";
+        const userName = data.userName || "Friend";
+
+        const subject = "🔑 Your Virtue PIN Recovery";
+        const bodyHtml = `
+          <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 500px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #198754; margin-top: 0;">Virtue Security Recovery</h2>
+            <p>Hello ${userName},</p>
+            <p>You requested recovery for your 4-digit Virtue security PIN.</p>
+            <div style="background-color: #f1f5f9; padding: 15px; font-size: 28px; font-weight: bold; letter-spacing: 6px; text-align: center; border-radius: 8px; color: #0f172a; margin: 20px 0;">
+              ${userPin}
+            </div>
+            <p style="color: #64748b; font-size: 12px; margin-top: 20px;">
+              If you did not request this PIN recovery, please check your Virtue extension settings.
+            </p>
+          </div>
+        `;
+
+        const success = await sendGmailNotification({
+          toEmail: targetEmail,
+          subject: subject,
+          bodyHtml: bodyHtml
+        });
+
+        sendResponse({ success });
+      });
+    });
+    return true;
+  }
+
   if (request.type === "SEND_PARTNER_CHANGE_ALERT") {
     const subject = "⚠️ Virtue Security Alert: Partner Email Modified";
     const bodyText = `Hello ${request.partnerName || 'Partner'},\n\nThis is an automated security notification from Virtue. ` +
@@ -593,7 +690,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       toEmail: request.oldEmail,
       subject: subject,
       bodyText: bodyText
-    }).then(() => sendResponse({ success: true }));
+    }).then((success) => sendResponse({ success }));
     return true;
   }
 
@@ -613,14 +710,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
 
       chrome.storage.local.get(["authToken"], (res) => {
-        if (res.authToken) {
-          chrome.identity.removeCachedAuthToken({ token: res.authToken }, () => {
-            chrome.storage.local.remove(["authToken", "driveFileId"], () => {
-              sendResponse({ success: true });
+        const token = res.authToken;
+        if (token) {
+          fetch(`https://accounts.google.com/o/oauth2/revoke?token=${token}`)
+            .finally(() => {
+              chrome.identity.removeCachedAuthToken({ token }, () => {
+                chrome.storage.local.remove(["authToken", "driveFileId", "userEmail"], () => {
+                  sendResponse({ success: true });
+                });
+              });
             });
-          });
         } else {
-          chrome.storage.local.remove(["authToken", "driveFileId"], () => {
+          chrome.storage.local.remove(["authToken", "driveFileId", "userEmail"], () => {
             sendResponse({ success: true });
           });
         }

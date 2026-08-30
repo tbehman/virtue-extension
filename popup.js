@@ -58,6 +58,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const forgotPinLink = document.getElementById("forgotPinLink");
   const forgotPinModal = document.getElementById("forgotPinModal");
   const closeForgotPinBtn = document.getElementById("closeForgotPinBtn");
+  const sendRecoveryEmailBtn = document.getElementById("sendRecoveryEmailBtn");
 
   let isUnlocked = false;
   let cachedPin = "";
@@ -119,10 +120,46 @@ document.addEventListener("DOMContentLoaded", () => {
             : "Not Set";
         }
           
-        // Resolve Web Dashboard Button Link
+        // Resolve Web Dashboard Button Link with Dynamic Encryption Key Injection
         if (data.driveFileId && viewSheetLink) {
-          const dashboardUrl = `${GITHUB_DASHBOARD_BASE_URL}?fileId=${data.driveFileId}`;
-          viewSheetLink.href = dashboardUrl;
+          const pin = data.userPin || "1234";
+          const email = data.userEmail || "user@virtue.app";
+
+          viewSheetLink.href = `${GITHUB_DASHBOARD_BASE_URL}?fileId=${data.driveFileId}`;
+
+          viewSheetLink.onclick = async (e) => {
+            e.preventDefault();
+            try {
+              const enc = new TextEncoder();
+              const baseKey = await crypto.subtle.importKey(
+                "raw",
+                enc.encode(pin),
+                "PBKDF2",
+                false,
+                ["deriveBits", "deriveKey"]
+              );
+              const derivedKey = await crypto.subtle.deriveKey(
+                {
+                  name: "PBKDF2",
+                  salt: enc.encode(email.toLowerCase().trim()),
+                  iterations: 100000,
+                  hash: "SHA-256"
+                },
+                baseKey,
+                { name: "AES-GCM", length: 256 },
+                true,
+                ["encrypt", "decrypt"]
+              );
+              const exported = await crypto.subtle.exportKey("raw", derivedKey);
+              const keyHex = Array.from(new Uint8Array(exported))
+                .map(b => b.toString(16).padStart(2, "0"))
+                .join("");
+
+              window.open(`${GITHUB_DASHBOARD_BASE_URL}?fileId=${data.driveFileId}#key=${keyHex}`, "_blank");
+            } catch (err) {
+              window.open(`${GITHUB_DASHBOARD_BASE_URL}?fileId=${data.driveFileId}`, "_blank");
+            }
+          };
         }
       }
     });
@@ -460,33 +497,49 @@ document.addEventListener("DOMContentLoaded", () => {
       chrome.storage.local.get(["partnerEmail"], (data) => {
         const pEmail = data.partnerEmail || "your partner";
         if (confirm(`Switching Google accounts will dispatch a security notification to ${pEmail} and reset storage connection on this device. Proceed?`)) {
-          chrome.storage.local.get(["authToken"], (res) => {
-            if (res.authToken) {
-              chrome.identity.removeCachedAuthToken({ token: res.authToken }, () => {
-                chrome.storage.local.clear(() => {
-                  location.reload();
-                });
-              });
-            } else {
-              chrome.storage.local.clear(() => {
-                location.reload();
-              });
-            }
+          chrome.runtime.sendMessage({ type: "SWITCH_GOOGLE_ACCOUNT" }, () => {
+            chrome.storage.local.clear(() => {
+              location.reload();
+            });
           });
         }
       });
     });
   }
 
-  forgotPinLink.addEventListener("click", (e) => {
-    e.preventDefault();
-    forgotPinModal.classList.remove("hidden");
-  });
+  // ==========================================
+  // 5. FORGOT PIN RECOVERY DISPATCH
+  // ==========================================
+  if (forgotPinLink) {
+    forgotPinLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (forgotPinModal) forgotPinModal.classList.remove("hidden");
+    });
+  }
 
-  closeForgotPinBtn.addEventListener("click", () => forgotPinModal.classList.add("hidden"));
+  if (closeForgotPinBtn) {
+    closeForgotPinBtn.addEventListener("click", () => {
+      if (forgotPinModal) forgotPinModal.classList.add("hidden");
+    });
+  }
+
+  function triggerPinRecovery() {
+    chrome.runtime.sendMessage({ type: "RECOVER_USER_PIN" }, (response) => {
+      if (response && response.success) {
+        alert("🔑 PIN recovery email sent! Check your primary Google Account inbox.");
+        if (forgotPinModal) forgotPinModal.classList.add("hidden");
+      } else {
+        alert("Unable to dispatch recovery email. Please check your internet connection.");
+      }
+    });
+  }
+
+  if (sendRecoveryEmailBtn) {
+    sendRecoveryEmailBtn.addEventListener("click", triggerPinRecovery);
+  }
 
   // ==========================================
-  // 5. DOMAIN MANAGEMENT
+  // 6. DOMAIN MANAGEMENT
   // ==========================================
   function updateFilterModeUI() {
     if (activeFilterMode === "whitelist") {

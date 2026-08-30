@@ -154,6 +154,7 @@
       display: flex;
       justify-content: center;
       gap: 10px;
+      margin-bottom: 12px;
     }
 
     input[type="password"] {
@@ -184,6 +185,19 @@
 
     .btn-override:hover {
       background-color: var(--danger-hover);
+    }
+
+    .forgot-pin-link {
+      display: inline-block;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-decoration: underline;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+
+    .forgot-pin-link:hover {
+      color: var(--accent-color);
     }
 
     .footer {
@@ -232,6 +246,10 @@
       <div class="pin-input-group">
         <input type="password" id="pinInput" maxlength="4" placeholder="••••" inputmode="numeric">
         <button class="btn-override" id="confirmOverrideBtn">Confirm</button>
+      </div>
+
+      <div>
+        <a class="forgot-pin-link" id="forgotPinLink">Forgot PIN?</a>
       </div>
     </div>
 
