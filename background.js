@@ -23,6 +23,16 @@ function getDeviceInfo() {
   return `${os} (Chrome)`;
 }
 
+// Sanitizes raw URLs and query parameters for clean regex evaluation
+function sanitizeStringForTesting(str) {
+  if (!str) return "";
+  try {
+    return decodeURIComponent(str).replace(/\+/g, " ");
+  } catch (e) {
+    return str.replace(/\+/g, " ");
+  }
+}
+
 function extractSearchQuery(urlStr) {
   try {
     const url = new URL(urlStr);
@@ -31,7 +41,9 @@ function extractSearchQuery(urlStr) {
         (domain.includes("bing.com") && url.pathname.includes("/search")) ||
         (domain.includes("duckduckgo.com") && url.pathname === "/")) {
       const queryParam = url.searchParams.get("q");
-      if (queryParam) return decodeURIComponent(queryParam.replace(/\+/g, " "));
+      if (queryParam) {
+        return decodeURIComponent(queryParam.replace(/\+/g, " "));
+      }
     }
   } catch (e) { console.error("URL Parse error:", e); }
   return null;
@@ -496,8 +508,9 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 
         // 4. Keyword & Regex Pattern Match
         if (!shouldBlock) {
-          const decodedUrl = decodeURIComponent(urlStr).toLowerCase();
-          const targetText = searchQuery ? `${decodedUrl} ${searchQuery.toLowerCase()}` : decodedUrl;
+          const cleanUrlStr = sanitizeStringForTesting(urlStr).toLowerCase();
+          const rawQuery = searchQuery ? searchQuery.toLowerCase() : "";
+          const targetText = `${cleanUrlStr} ${rawQuery}`;
 
           const userKeywords = (settings.customKeywords || []).map(k => {
             try { return new RegExp(`\\b${k.trim()}\\b`, 'i'); } catch (e) { return null; }
@@ -506,7 +519,7 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
           const allRegexes = [...COMPILED_KEYWORD_REGEXES, ...userKeywords];
 
           for (const regex of allRegexes) {
-            if (regex.test(targetText)) {
+            if (regex.test(targetText) || (rawQuery && regex.test(rawQuery))) {
               shouldBlock = true;
               blockReason = "keyword";
               break;
