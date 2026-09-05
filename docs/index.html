@@ -603,22 +603,61 @@
         beats.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         const latest = beats[beats.length - 1];
 
-        if (!latest.incognitoAllowed) {
-          hasAuditNotice = true;
-          const unmonitoredBeats = beats.filter(b => b.incognitoAllowed === false);
-          const firstOff = new Date(unmonitoredBeats[0].timestamp);
+        // Check if Incognito was never enabled
+        const everEnabled = beats.some(b => b.incognitoAllowed === true);
 
-          if (!latest.hasEverEnabledIncognito) {
-            noticeHtml += `<p style="margin: 4px 0;">ℹ️ <strong>${devName}:</strong> Incognito monitoring setup incomplete since installation.</p>`;
-          } else {
-            noticeHtml += `<p style="margin: 4px 0;">⚠️ <strong>${devName}:</strong> Incognito monitoring is currently disabled (Unmonitored since ${formatDateShort(firstOff)}).</p>`;
+        if (!everEnabled && !latest.incognitoAllowed) {
+          hasAuditNotice = true;
+          noticeHtml += `<p style="margin: 4px 0;">ℹ️ <strong>${devName}:</strong> Incognito protection has not been enabled since setup.</p>`;
+        } else {
+          // Group contiguous false heartbeats into time windows
+          const unmonitoredWindows = [];
+          let windowStart = null;
+          let lastFalseTime = null;
+
+          beats.forEach((hb, idx) => {
+            const hbTime = new Date(hb.timestamp);
+            if (!hb.incognitoAllowed) {
+              if (!windowStart) windowStart = hbTime;
+              lastFalseTime = hbTime;
+              
+              // If it's the very last beat and still false, close as active window
+              if (idx === beats.length - 1) {
+                unmonitoredWindows.push({ start: windowStart, end: null });
+              }
+            } else {
+              if (windowStart) {
+                unmonitoredWindows.push({ start: windowStart, end: lastFalseTime });
+                windowStart = null;
+                lastFalseTime = null;
+              }
+            }
+          });
+
+          if (unmonitoredWindows.length > 0) {
+            hasAuditNotice = true;
+            noticeHtml += `<div style="margin-top: 6px;"><strong>⚠️ ${devName} — Unmonitored Incognito Window(s):</strong><ul style="margin: 4px 0 8px 0; padding-left: 20px;">`;
+            
+            unmonitoredWindows.forEach(win => {
+              const startStr = formatTime(win.start.toISOString());
+              if (win.end) {
+                const endStr = formatTime(win.end.toISOString());
+                const diffMin = Math.round((win.end - win.start) / 60000);
+                const durationStr = diffMin < 60 ? `${Math.max(1, diffMin)} min` : `${(diffMin / 60).toFixed(1)} hr`;
+                noticeHtml += `<li>${startStr} – ${endStr} (${durationStr})</li>`;
+              } else {
+                noticeHtml += `<li style="color: #dc3545; font-weight: bold;">${startStr} – Present (Active Unmonitored Session)</li>`;
+              }
+            });
+            
+            noticeHtml += `</ul></div>`;
           }
         }
       });
 
       if (ignoredWarningLogs.length > 0) {
         hasAuditNotice = true;
-        noticeHtml += `<div style="margin-top: 8px;"><strong>🛑 Restricted Sites Visited (${ignoredWarningLogs.length} Ignored Warnings):</strong><ul>`;
+        noticeHtml += `<div style="margin-top: 8px;"><strong>🛑 Restricted Sites Visited (${ignoredWarningLogs.length} Ignored Warnings):</strong><ul style="margin: 4px 0 0 0; padding-left: 20px;">`;
         ignoredWarningLogs.forEach(log => {
           const timeStr = formatTime(log.timestamp);
           const dev = log.device || "Desktop";

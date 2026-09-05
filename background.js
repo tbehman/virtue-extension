@@ -266,138 +266,151 @@ async function checkAndSendWeeklyDigest() {
     const lastSent = data.lastWeeklyDigestSentAt || 0;
     if (now - lastSent < SEVEN_DAYS_MS) return;
 
-    try {
-      const { key, keyHex } = await getActiveEncryptionKey();
-      const res = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${data.driveFileId}?alt=media`);
-      const fileData = await res.json();
-      
-      let logs = [];
-      if (fileData.encryptedData && fileData.iv) {
-        logs = await decryptData(fileData.encryptedData, fileData.iv, key);
-      } else {
-        logs = fileData.logs || [];
-      }
-
-      const validSearches = logs.filter(l => l.searchQuery && l.searchQuery.trim() !== "" && l.searchQuery.trim().toUpperCase() !== "N/A");
-      const ignoredWarnings = logs.filter(l => (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
-
-      const domainCounts = {};
-      logs.forEach(l => {
-        try {
-          if (l.url && l.url.startsWith("http")) {
-            const domain = new URL(l.url).hostname.replace('www.', '');
-            domainCounts[domain] = (domainCounts[domain] || 0) + 1;
-          }
-        } catch (e) {}
-      });
-      const topDomains = Object.entries(domainCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-
-      const userName = data.userName || "User";
-      const partnerName = data.partnerName || "Partner";
-      const dashboardUrl = `https://tbehman.github.io/virtue-extension/?fileId=${data.driveFileId}#key=${keyHex}`;
-
-      let warningsHtml = "";
-      if (ignoredWarnings.length > 0) {
-        warningsHtml = `
-          <div style="background-color: #fff3cd; border: 1px solid #ffe69c; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-            <h3 style="margin: 0 0 10px 0; color: #664d03; font-size: 15px;">⚠️ Restricted Sites Visited (${ignoredWarnings.length} Ignored Warnings)</h3>
-            <ul style="margin: 0; padding-left: 20px; color: #664d03; font-size: 13px;">
-              ${ignoredWarnings.map(w => `
-                <li style="margin-bottom: 6px;">
-                  <strong>${new Date(w.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</strong> - 
-                  <em>"${w.title ? w.title.replace("[VISITED]", "").trim() : "Untitled"}"</em><br>
-                  <a href="${w.url}" style="color: #664d03; word-break: break-all;">${w.url}</a>
-                </li>
-              `).join('')}
-            </ul>
-          </div>
-        `;
-      }
-
-      const domainRowsHtml = topDomains.length > 0 
-        ? topDomains.map(([domain, count]) => `
-            <tr>
-              <td style="padding: 8px 12px; border-bottom: 1px solid #e9ecef; font-size: 13px;"><strong>${domain}</strong></td>
-              <td style="padding: 8px 12px; border-bottom: 1px solid #e9ecef; font-size: 13px; text-align: right;">${count} visits</td>
-            </tr>
-          `).join('')
-        : `<tr><td colspan="2" style="padding: 12px; text-align: center; color: #6c757d; font-size: 13px;">No browsing activity logged</td></tr>`;
-
-      const searchRowsHtml = validSearches.length > 0
-        ? validSearches.slice(0, 10).map(s => `
-            <li style="margin-bottom: 6px; font-size: 13px; color: #212529;">
-              <strong>"${s.searchQuery}"</strong> 
-              <span style="color: #6c757d; font-size: 11px;">(${new Date(s.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })})</span>
-            </li>
-          `).join('')
-        : `<li style="font-size: 13px; color: #6c757d;">No search queries recorded</li>`;
-
-      const bodyHtml = `
-        <!DOCTYPE html>
-        <html>
-        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8f9fa; margin: 0; padding: 20px;">
-          <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e9ecef; overflow: hidden; padding: 25px;">
-            <div style="display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #198754; padding-bottom: 15px; margin-bottom: 20px;">
-              <img src="https://raw.githubusercontent.com/tbehman/virtue-extension/main/docs/virtue_logo.png" alt="Virtue Logo" style="height: 48px; width: auto; vertical-align: middle;">
-              <h2 style="margin: 0; color: #198754; font-size: 22px;">Virtue Weekly Digest</h2>
-            </div>
-            <p style="font-size: 14px; color: #212529;">Hello ${partnerName},</p>
-            <p style="font-size: 14px; color: #6c757d; line-height: 1.5;">Here is the 7-day accountability snapshot report for <strong>${userName}</strong>.</p>
-            ${warningsHtml}
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; background: #f8f9fa; border-radius: 8px;">
-              <tr>
-                <td style="padding: 12px; text-align: center; border-right: 1px solid #e9ecef;">
-                  <div style="font-size: 11px; color: #6c757d; text-transform: uppercase;">Total Searches</div>
-                  <div style="font-size: 20px; font-weight: bold; color: #198754;">${validSearches.length}</div>
-                </td>
-                <td style="padding: 12px; text-align: center;">
-                  <div style="font-size: 11px; color: #6c757d; text-transform: uppercase;">Ignored Warnings</div>
-                  <div style="font-size: 20px; font-weight: bold; color: ${ignoredWarnings.length > 0 ? '#dc3545' : '#198754'};">${ignoredWarnings.length}</div>
-                </td>
-              </tr>
-            </table>
-            <h3 style="font-size: 15px; color: #212529; margin-bottom: 10px;">📊 Top Visited Domains</h3>
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
-              ${domainRowsHtml}
-            </table>
-            <h3 style="font-size: 15px; color: #212529; margin-bottom: 10px;">🔍 Recent Search Queries</h3>
-            <ul style="padding-left: 20px; margin-bottom: 25px;">
-              ${searchRowsHtml}
-            </ul>
-            <div style="text-align: center; border-top: 1px solid #e9ecef; padding-top: 20px; margin-top: 20px;">
-              <a href="${dashboardUrl}" target="_blank" style="background-color: #198754; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">View Full Web Dashboard ➔</a>
-            </div>
-            <p style="font-size: 12px; color: #6c757d; text-align: center; margin-top: 25px;">Blessings,<br><strong>Virtue Accountability Team</strong></p>
-          </div>
-        </body>
-        </html>
-      `;
-
-      const subject = `🛡️ Virtue Weekly Accountability Digest for ${userName}`;
-      await sendGmailNotification({ toEmail: data.partnerEmail, subject: subject, bodyHtml: bodyHtml });
-      chrome.storage.local.set({ lastWeeklyDigestSentAt: now });
-    } catch (err) {
-      console.error("Weekly digest generation error:", err);
-    }
+    await dispatchReportSnapshot(data, "🛡️ Virtue Weekly Accountability Digest");
+    chrome.storage.local.set({ lastWeeklyDigestSentAt: now });
   });
+}
+
+async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
+  try {
+    const { key, keyHex } = await getActiveEncryptionKey();
+    const res = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${profileData.driveFileId}?alt=media`);
+    const fileData = await res.json();
+    
+    let logs = [];
+    if (fileData.encryptedData && fileData.iv) {
+      logs = await decryptData(fileData.encryptedData, fileData.iv, key);
+    } else {
+      logs = fileData.logs || [];
+    }
+
+    const validSearches = logs.filter(l => l.searchQuery && l.searchQuery.trim() !== "" && l.searchQuery.trim().toUpperCase() !== "N/A");
+    const ignoredWarnings = logs.filter(l => (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
+
+    const domainCounts = {};
+    logs.forEach(l => {
+      try {
+        if (l.url && l.url.startsWith("http")) {
+          const domain = new URL(l.url).hostname.replace('www.', '');
+          domainCounts[domain] = (domainCounts[domain] || 0) + 1;
+        }
+      } catch (e) {}
+    });
+    const topDomains = Object.entries(domainCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+    const userName = profileData.userName || "User";
+    const partnerName = profileData.partnerName || "Partner";
+    const dashboardUrl = `https://tbehman.github.io/virtue-extension/?fileId=${profileData.driveFileId}#key=${keyHex}`;
+
+    let warningsHtml = "";
+    if (ignoredWarnings.length > 0) {
+      warningsHtml = `
+        <div style="background-color: #fff3cd; border: 1px solid #ffe69c; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+          <h3 style="margin: 0 0 10px 0; color: #664d03; font-size: 15px;">⚠️ Restricted Sites Visited (${ignoredWarnings.length} Ignored Warnings)</h3>
+          <ul style="margin: 0; padding-left: 20px; color: #664d03; font-size: 13px;">
+            ${ignoredWarnings.map(w => `
+              <li style="margin-bottom: 6px;">
+                <strong>${new Date(w.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</strong> - 
+                <em>"${w.title ? w.title.replace("[VISITED]", "").trim() : "Untitled"}"</em><br>
+                <a href="${w.url}" style="color: #664d03; word-break: break-all;">${w.url}</a>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+      `;
+    }
+
+    const domainRowsHtml = topDomains.length > 0 
+      ? topDomains.map(([domain, count]) => `
+          <tr>
+            <td style="padding: 8px 12px; border-bottom: 1px solid #e9ecef; font-size: 13px;"><strong>${domain}</strong></td>
+            <td style="padding: 8px 12px; border-bottom: 1px solid #e9ecef; font-size: 13px; text-align: right;">${count} visits</td>
+          </tr>
+        `).join('')
+      : `<tr><td colspan="2" style="padding: 12px; text-align: center; color: #6c757d; font-size: 13px;">No browsing activity logged</td></tr>`;
+
+    const searchRowsHtml = validSearches.length > 0
+      ? validSearches.slice(0, 10).map(s => `
+          <li style="margin-bottom: 6px; font-size: 13px; color: #212529;">
+            <strong>"${s.searchQuery}"</strong> 
+            <span style="color: #6c757d; font-size: 11px;">(${new Date(s.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })})</span>
+          </li>
+        `).join('')
+      : `<li style="font-size: 13px; color: #6c757d;">No search queries recorded</li>`;
+
+    const bodyHtml = `
+      <!DOCTYPE html>
+      <html>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8f9fa; margin: 0; padding: 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e9ecef; overflow: hidden; padding: 25px;">
+          <div style="display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #198754; padding-bottom: 15px; margin-bottom: 20px;">
+            <img src="https://raw.githubusercontent.com/tbehman/virtue-extension/main/docs/virtue_logo.png" alt="Virtue Logo" style="height: 48px; width: auto; vertical-align: middle;">
+            <h2 style="margin: 0; color: #198754; font-size: 22px;">Virtue Accountability Report</h2>
+          </div>
+          <p style="font-size: 14px; color: #212529;">Hello ${partnerName},</p>
+          <p style="font-size: 14px; color: #6c757d; line-height: 1.5;">Here is the latest accountability report snapshot for <strong>${userName}</strong>.</p>
+          ${warningsHtml}
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; background: #f8f9fa; border-radius: 8px;">
+            <tr>
+              <td style="padding: 12px; text-align: center; border-right: 1px solid #e9ecef;">
+                <div style="font-size: 11px; color: #6c757d; text-transform: uppercase;">Total Searches</div>
+                <div style="font-size: 20px; font-weight: bold; color: #198754;">${validSearches.length}</div>
+              </td>
+              <td style="padding: 12px; text-align: center;">
+                <div style="font-size: 11px; color: #6c757d; text-transform: uppercase;">Ignored Warnings</div>
+                <div style="font-size: 20px; font-weight: bold; color: ${ignoredWarnings.length > 0 ? '#dc3545' : '#198754'};">${ignoredWarnings.length}</div>
+              </td>
+            </tr>
+          </table>
+          <h3 style="font-size: 15px; color: #212529; margin-bottom: 10px;">📊 Top Visited Domains</h3>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+            ${domainRowsHtml}
+          </table>
+          <h3 style="font-size: 15px; color: #212529; margin-bottom: 10px;">🔍 Recent Search Queries</h3>
+          <ul style="padding-left: 20px; margin-bottom: 25px;">
+            ${searchRowsHtml}
+          </ul>
+          <div style="text-align: center; border-top: 1px solid #e9ecef; padding-top: 20px; margin-top: 20px;">
+            <a href="${dashboardUrl}" target="_blank" style="background-color: #198754; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">View Full Web Dashboard ➔</a>
+          </div>
+          <p style="font-size: 12px; color: #6c757d; text-align: center; margin-top: 25px;">Blessings,<br><strong>Virtue Accountability Team</strong></p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const subject = `${customSubjectPrefix} for ${userName}`;
+    await sendGmailNotification({ toEmail: profileData.partnerEmail, subject: subject, bodyHtml: bodyHtml });
+  } catch (err) {
+    console.error("Report snapshot dispatch error:", err);
+  }
 }
 
 // ==========================================
 // 3. DRIVE JSON SYNC ENGINE
 // ==========================================
 function flushBufferToDriveJson() {
-  chrome.storage.local.get({ logBuffer: [], driveFileId: "" }, (result) => {
-    const buffer = result.logBuffer;
-    let driveFileId = result.driveFileId;
-    if (buffer.length === 0) return;
+  chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
+    addToBuffer({
+      type: "HEARTBEAT",
+      incognitoAllowed: isAllowed,
+      device: getDeviceInfo(),
+      timestamp: getCleanTimestamp()
+    });
 
-    let uniqueLogs = Array.from(new Set(buffer.map(a => a.url))).map(url => buffer.find(a => a.url === url));
+    chrome.storage.local.get({ logBuffer: [], driveFileId: "" }, (result) => {
+      const buffer = result.logBuffer;
+      let driveFileId = result.driveFileId;
+      if (buffer.length === 0) return;
 
-    if (!driveFileId) {
-      findOrCreateDriveJsonFile((fileId) => { syncLogsToDriveFile(fileId, uniqueLogs); });
-    } else {
-      syncLogsToDriveFile(driveFileId, uniqueLogs);
-    }
+      let uniqueLogs = Array.from(new Set(buffer.map(a => a.url || a.timestamp))).map(key => buffer.find(a => (a.url || a.timestamp) === key));
+
+      if (!driveFileId) {
+        findOrCreateDriveJsonFile((fileId) => { syncLogsToDriveFile(fileId, uniqueLogs); });
+      } else {
+        syncLogsToDriveFile(driveFileId, uniqueLogs);
+      }
+    });
   });
 }
 
@@ -697,16 +710,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === "SWITCH_GOOGLE_ACCOUNT") {
     flushBufferToDriveJson();
 
-    chrome.storage.local.get(["userName", "partnerName", "partnerEmail"], (profile) => {
-      if (profile.partnerEmail) {
-        sendGmailNotification({
-          toEmail: profile.partnerEmail,
-          subject: "⚠️ Virtue Security Alert: Google Account Disconnected",
-          bodyText: `Hello ${profile.partnerName || 'Partner'},\n\n` +
-            `${profile.userName || 'User'} has unlinked their primary Google Account from Virtue. ` +
-            `Protection logs will resume once re-authenticated.\n\n` +
-            `Blessings,\nVirtue Security`
-        });
+    chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "driveFileId"], async (profile) => {
+      if (profile.partnerEmail && profile.driveFileId) {
+        await dispatchReportSnapshot(profile, "⚠️ Virtue Pre-Disconnect Accountability Snapshot");
       }
 
       chrome.storage.local.get(["authToken"], (res) => {

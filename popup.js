@@ -21,6 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const pinLabelText = document.getElementById("pinLabelText");
   const authGoogleBtn = document.getElementById("authGoogleBtn");
   const completeSetupBtn = document.getElementById("completeSetupBtn");
+  const openExtensionSettingsBtn = document.getElementById("openExtensionSettingsBtn");
   const status = document.getElementById("status");
 
   // Settings Profile Form
@@ -39,8 +40,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Settings Storage Section Elements
   const settingsUserEmail = document.getElementById("settingsUserEmail");
-  const disclaimerPartnerEmail = document.getElementById("disclaimerPartnerEmail");
-  const switchStorageAccountBtn = document.getElementById("switchStorageAccountBtn");
 
   // Settings & PIN Controls
   const pinPromptArea = document.getElementById("pinPromptArea");
@@ -192,6 +191,13 @@ document.addEventListener("DOMContentLoaded", () => {
           });
         }
       });
+    });
+  }
+
+  // Deep link to Chrome Extension options page for Incognito permission
+  if (openExtensionSettingsBtn) {
+    openExtensionSettingsBtn.addEventListener("click", () => {
+      chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
     });
   }
 
@@ -406,7 +412,6 @@ document.addEventListener("DOMContentLoaded", () => {
       editPartnerEmailInput.value = data.partnerEmail || "";
 
       if (settingsUserEmail) settingsUserEmail.textContent = data.userEmail || "Connected Google Account";
-      if (disclaimerPartnerEmail) disclaimerPartnerEmail.textContent = data.partnerEmail || "Partner";
     });
 
     updateFilterModeUI();
@@ -451,8 +456,6 @@ document.addEventListener("DOMContentLoaded", () => {
             profileStatusText.textContent = "Profile saved successfully!";
           }
 
-          if (disclaimerPartnerEmail) disclaimerPartnerEmail.textContent = newPartnerEmail;
-
           setTimeout(() => {
             profileStatusText.style.display = "none";
           }, 3500);
@@ -489,22 +492,6 @@ document.addEventListener("DOMContentLoaded", () => {
       .catch(() => callback());
     })
     .catch(() => callback());
-  }
-
-  // Switch Storage Account Handler
-  if (switchStorageAccountBtn) {
-    switchStorageAccountBtn.addEventListener("click", () => {
-      chrome.storage.local.get(["partnerEmail"], (data) => {
-        const pEmail = data.partnerEmail || "your partner";
-        if (confirm(`Switching Google accounts will dispatch a security notification to ${pEmail} and reset storage connection on this device. Proceed?`)) {
-          chrome.runtime.sendMessage({ type: "SWITCH_GOOGLE_ACCOUNT" }, () => {
-            chrome.storage.local.clear(() => {
-              location.reload();
-            });
-          });
-        }
-      });
-    });
   }
 
   // ==========================================

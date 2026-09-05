@@ -57,6 +57,17 @@
         <input type="password" id="masterPinInput" maxlength="4" placeholder="••••" inputmode="numeric" required>
       </div>
 
+      <!-- Incognito Protection Guidance Box -->
+      <div style="background: var(--warning-bg); border-left: 3px solid var(--warning-border); padding: 8px 10px; border-radius: 6px; margin: 12px 0 8px 0;">
+        <div class="info-label" style="color: var(--warning-text); font-size: 10px; margin-bottom: 2px;">🛡️ RECOMMENDED: INCOGNITO PROTECTION</div>
+        <p style="font-size: 11px; color: var(--warning-text); line-height: 1.35; margin: 0 0 8px 0;">
+          To monitor Incognito windows, Chrome requires enabling <strong>Allow in Incognito</strong> in extension settings.
+        </p>
+        <button id="openExtensionSettingsBtn" type="button" class="btn btn-outline" style="font-size: 11px; padding: 5px 8px; background: #ffffff; width: 100%;">
+          ⚙️ Open Chrome Settings to Enable
+        </button>
+      </div>
+
       <button id="completeSetupBtn" class="btn btn-primary" style="margin-top: 6px;">
         Complete Setup & Activate
       </button>
@@ -147,17 +158,14 @@
       </div>
     </div>
 
-    <div class="card" id="managementRow" style="border-color: var(--warning-border);">
-      <div class="info-label" style="font-size: 11px; margin-bottom: 4px;">GOOGLE STORAGE CONNECTION</div>
-      <div id="settingsUserEmail" class="info-value" style="margin-bottom: 8px;">Loading...</div>
+    <div class="card" id="managementRow">
+      <div class="info-label" style="font-size: 11px; margin-bottom: 4px;">YOUR SAVED REPORT</div>
+      <p style="font-size: 11px; color: var(--text-muted); line-height: 1.4; margin-bottom: 10px;">
+        To keep Virtue free and completely private, your activity report is saved inside a private folder on your Google Drive.
+      </p>
 
-      <button id="switchStorageAccountBtn" class="btn btn-outline" style="color: var(--danger); border-color: var(--danger); font-size: 12px; padding: 7px;">
-        Switch Google Account
-      </button>
-
-      <div id="switchAccountDisclaimer" style="font-size: 10px; color: var(--text-muted); margin-top: 6px;">
-        ⚠️ Sends a security alert to <strong id="disclaimerPartnerEmail">...</strong>.
-      </div>
+      <label class="info-label" style="font-size: 10px;">📁 CONNECTED GOOGLE ACCOUNT</label>
+      <div id="settingsUserEmail" class="info-value" style="font-weight: bold;">Loading...</div>
     </div>
   </div>
 
