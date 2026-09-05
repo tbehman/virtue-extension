@@ -11,10 +11,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const userNameEl = document.getElementById("userName");
   const partnerNameEl = document.getElementById("partnerName");
 
-  const DASHBOARD_FALLBACK = "https://tbehman.github.io/virtue-extension/";
-
   const urlParams = new URLSearchParams(window.location.search);
-  const targetUrl = urlParams.get("url") || urlParams.get("target") || DASHBOARD_FALLBACK;
+  const targetUrl = urlParams.get("target") || "https://www.google.com";
 
   // 1. KJV Scriptures
   const KJV_SCRIPTURES = [
@@ -47,10 +45,10 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 3. Direct Navigation to GitHub Dashboard Page
+  // 3. Direct Navigation to Google
   if (safetyBtn) {
     safetyBtn.addEventListener("click", () => {
-      window.location.href = DASHBOARD_FALLBACK;
+      window.location.href = "https://www.google.com";
     });
   }
 
@@ -80,8 +78,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function handleOverrideSubmit() {
     const enteredPin = pinInput.value.trim();
 
-    chrome.storage.local.get(["masterPin", "userPin", "logBuffer"], (data) => {
-      const storedPin = data.masterPin || data.userPin;
+    chrome.storage.local.get(["userPin", "logBuffer"], (data) => {
+      const storedPin = data.userPin;
 
       if (!storedPin) {
         alert("No PIN has been set yet. Please configure your PIN in the extension options.");
@@ -93,7 +91,7 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
           bypassUrl = new URL(targetUrl);
         } catch {
-          bypassUrl = new URL(DASHBOARD_FALLBACK);
+          bypassUrl = new URL("https://www.google.com");
         }
         
         bypassUrl.searchParams.set("virtue_bypass", "true");
@@ -107,11 +105,6 @@ document.addEventListener("DOMContentLoaded", () => {
           timestamp: new Date().toISOString(),
           flagged: true
         });
-
-        // Send temporary bypass message to background script before navigating
-        if (chrome.runtime && chrome.runtime.sendMessage) {
-          chrome.runtime.sendMessage({ type: "GRANT_TEMP_BYPASS", url: targetUrl });
-        }
 
         chrome.storage.local.set({ logBuffer: buffer }, () => {
           window.location.href = bypassUrl.toString();

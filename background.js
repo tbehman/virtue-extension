@@ -5,17 +5,6 @@ import { deriveKeyFromPin, encryptData, decryptData } from './cryptoUtils.js';
 const SAFESEARCH_RULE_IDS = [101, 102, 103];
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Infrastructure domains that can NEVER be blocked in any mode
-const SYSTEM_WHITELIST = [
-  "tbehman.github.io",
-  "accounts.google.com",
-  "googleapis.com",
-  "clients6.google.com"
-];
-
-// In-memory store for 5-minute temporary PIN overrides
-const temporaryBypasses = new Map();
-
 // State guard for search query deduplication
 let lastLoggedSearch = { query: "", time: 0 };
 
@@ -552,26 +541,10 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) return;
   if (urlStr.includes("virtue_bypass=true")) return;
 
-  // 1. Check in-memory 5-minute temporary PIN bypasses
-  if (temporaryBypasses.has(urlStr)) {
-    const expiry = temporaryBypasses.get(urlStr);
-    if (Date.now() < expiry) {
-      return; // Allow navigation
-    } else {
-      temporaryBypasses.delete(urlStr);
-    }
-  }
-
   chrome.storage.local.get({ filterMode: "blocklist", customBlacklist: [], customWhitelist: [], customKeywords: [] }, (settings) => {
     try {
       const url = new URL(urlStr);
       const hostname = url.hostname.toLowerCase().trim();
-
-      // 2. System Whitelist Protection (Dashboard/OAuth/Google API endpoints)
-      if (SYSTEM_WHITELIST.some(sysDomain => hostname.endsWith(sysDomain))) {
-        return; // Always allow core infrastructure
-      }
-
       const searchQuery = extractSearchQuery(urlStr);
       const isYahooMediaLeak = hostname.startsWith("images.search.yahoo.com") || hostname.startsWith("video.search.yahoo.com");
 
@@ -585,14 +558,14 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
         });
       };
 
-      // 3. Custom Whitelist Evaluation
+      // 1. Custom Whitelist
       if (settings.filterMode === "whitelist") {
         shouldBlock = !matchesCustomList(settings.customWhitelist);
       } else {
-        // 4. Custom Blacklist Evaluation
+        // 2. Custom Blacklist
         const inCustomBlacklist = matchesCustomList(settings.customBlacklist);
 
-        // 5. Static Domain Blocklist Evaluation
+        // 3. Static Domain Blocklist
         let inStaticShield = false;
         const parts = hostname.split('.');
         for (let i = 0; i < parts.length - 1; i++) {
@@ -605,7 +578,7 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 
         shouldBlock = inCustomBlacklist || inStaticShield || isYahooMediaLeak;
 
-        // 6. Keyword & Regex Pattern Matching
+        // 4. Keyword & Regex Pattern Match
         if (!shouldBlock) {
           const cleanUrlStr = sanitizeStringForTesting(urlStr).toLowerCase();
           const rawQuery = searchQuery ? searchQuery.toLowerCase() : "";
@@ -690,28 +663,9 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
 });
 
 // ==========================================
-// 6. MESSAGE LISTENERS FOR POPUP & BLOCKED ACTIONS
+// 6. MESSAGE LISTENERS FOR POPUP ACTIONS
 // ==========================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.type === "GRANT_TEMP_BYPASS") {
-    if (request.url) {
-      // Grant a 5-minute temporary bypass for the unlocked site
-      temporaryBypasses.set(request.url, Date.now() + 5 * 60 * 1000);
-      
-      // Log an overridden restriction event for the accountability summary
-      addToBuffer({
-        url: `[OVERRIDE BYPASS] ${request.url}`,
-        title: `[OVERRIDE BYPASS] ${request.url}`,
-        searchQuery: "",
-        device: getDeviceInfo(),
-        timestamp: getCleanTimestamp(),
-        flagged: true
-      });
-    }
-    sendResponse({ success: true });
-    return true;
-  }
-
   if (request.type === "RECOVER_USER_PIN") {
     chrome.storage.local.get(["userPin", "userName", "userEmail"], (data) => {
       chrome.identity.getProfileUserInfo({ accountStatus: "ANY" }, async (userInfo) => {
