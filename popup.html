@@ -1,184 +1,132 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Virtue Protection</title>
-  <link rel="stylesheet" href="popup.css">
+  <title>Virtue Extension</title>
+  <style>
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 16px;
+      background-color: #ffffff;
+      color: #212529;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #e9ecef;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .logo-container img {
+      height: 28px;
+      width: auto;
+    }
+    .logo-title {
+      font-weight: 800;
+      font-size: 16px;
+      color: #198754;
+      letter-spacing: 0.5px;
+    }
+    .status-card {
+      background-color: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+    }
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .status-row:last-child {
+      margin-bottom: 0;
+    }
+    .mode-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+    }
+    .badge-blocklist {
+      background-color: #e2e3e5;
+      color: #383d41;
+    }
+    .badge-whitelist {
+      background-color: #d1e7dd;
+      color: #0f5132;
+    }
+    .btn {
+      width: 100%;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-bottom: 8px;
+      transition: background-color 0.2s;
+    }
+    .btn-primary {
+      background-color: #198754;
+      color: white;
+    }
+    .btn-primary:hover {
+      background-color: #146c43;
+    }
+    .btn-outline {
+      background-color: #ffffff;
+      border: 1px solid #ced4da;
+      color: #495057;
+    }
+    .btn-outline:hover {
+      background-color: #f8f9fa;
+    }
+  </style>
 </head>
 <body>
 
-  <div class="brand-header">
-    <img src="docs/virtue_logo.png" alt="Virtue Logo">
-    <div>
-      <h2>Virtue</h2>
-      <p>Accountability & Protection</p>
+  <div class="header">
+    <div class="logo-container">
+      <img src="virtue_logo.png" alt="Virtue">
+      <span class="logo-title">VIRTUE</span>
+    </div>
+    <span id="modeBadge" class="mode-badge badge-blocklist">🛡️ Blocklist</span>
+  </div>
+
+  <div class="status-card">
+    <div class="status-row">
+      <span style="font-size: 12px; color: #6c757d;">Monitoring Status</span>
+      <span style="font-size: 12px; font-weight: bold; color: #198754;">🟢 Active</span>
+    </div>
+    <div class="status-row">
+      <span style="font-size: 12px; color: #6c757d;">Filter Mode</span>
+      <span id="filterModeText" style="font-size: 12px; font-weight: 600;">Blocklist Mode</span>
     </div>
   </div>
 
-  <div id="setupScreen" class="screen hidden">
-    <div id="authStepContainer" class="card">
-      <p style="font-size: 12px; color: var(--text-muted); text-align: center; margin-bottom: 12px;">
-        Connect your primary Google Account to link your accountability vault.
-      </p>
-      <button id="authGoogleBtn" class="btn btn-outline" style="background-color: #ffffff;">
-        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-          <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-          <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
-          <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
-          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-        </svg>
-        <span>Connect Google Account</span>
-      </button>
-    </div>
-
-    <div id="existingVaultNotice" class="hidden" style="background: #e8f5e9; border-left: 3px solid var(--primary); padding: 8px 10px; border-radius: 6px; margin-bottom: 10px; font-size: 11px; color: #1b5e20;">
-      <span id="existingVaultText">👋 Welcome back! Found existing Virtue vault.</span>
-    </div>
-
-    <div id="profileFormFields" class="card hidden">
-      <div id="userNameGroup">
-        <label class="info-label" for="userNameInput">Your Name</label>
-        <input type="text" id="userNameInput" placeholder="e.g., John Adams">
-      </div>
-
-      <div id="partnerNameGroup">
-        <label class="info-label" for="partnerNameInput">Accountability Partner's Name</label>
-        <input type="text" id="partnerNameInput" placeholder="e.g., George Washington">
-      </div>
-
-      <div id="partnerEmailGroup">
-        <label class="info-label" for="partnerEmailInput">Partner's Email Address</label>
-        <input type="email" id="partnerEmailInput" placeholder="e.g., trustedfriend@email.com">
-      </div>
-
-      <div>
-        <label id="pinLabelText" class="info-label" for="masterPinInput">Create a 4-Digit Master PIN</label>
-        <input type="password" id="masterPinInput" maxlength="4" placeholder="••••" inputmode="numeric" required>
-      </div>
-
-      <!-- Incognito Protection Guidance Box -->
-      <div style="background: var(--warning-bg); border-left: 3px solid var(--warning-border); padding: 8px 10px; border-radius: 6px; margin: 12px 0 8px 0;">
-        <div class="info-label" style="color: var(--warning-text); font-size: 10px; margin-bottom: 2px;">🛡️ RECOMMENDED: INCOGNITO PROTECTION</div>
-        <p style="font-size: 11px; color: var(--warning-text); line-height: 1.35; margin: 0 0 8px 0;">
-          To monitor Incognito windows, Chrome requires enabling <strong>Allow in Incognito</strong> in extension settings.
-        </p>
-        <button id="openExtensionSettingsBtn" type="button" class="btn btn-outline" style="font-size: 11px; padding: 5px 8px; background: #ffffff; width: 100%;">
-          ⚙️ Open Chrome Settings to Enable
-        </button>
-      </div>
-
-      <button id="completeSetupBtn" class="btn btn-primary" style="margin-top: 6px;">
-        Complete Setup & Activate
-      </button>
-    </div>
-
-    <p id="status" class="status-text" style="font-size: 11px; text-align: center; margin-top: 6px;"></p>
-  </div>
-
-  <div id="dashboardScreen" class="screen hidden">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 0 2px;">
-      <span id="syncBadge" class="badge">🟢 LIVE SYNC ACTIVE</span>
-      <button id="openSettingsBtn" title="Settings" style="background: none; border: none; font-size: 12px; cursor: pointer; color: var(--text-muted); font-weight: 600;">⚙️ Settings</button>
-    </div>
-
-    <div class="card">
-      <div style="margin-bottom: 10px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span class="info-label">CONNECTED ACCOUNT</span>
-          <button id="refreshAccountBtn" title="Refresh Account" style="background: none; border: none; cursor: pointer; font-size: 11px; opacity: 0.6;">🔄</button>
-        </div>
-        <div id="accountDisplay" class="info-value">Loading...</div>
-      </div>
-      <div>
-        <span class="info-label">ACCOUNTABILITY PARTNER</span>
-        <div id="partnerDisplayEmail" class="info-value">Loading...</div>
-      </div>
-    </div>
-
-    <a id="viewSheetLink" href="#" target="_blank" class="btn btn-primary" style="text-decoration: none; margin-bottom: 8px;">
-      <span>📊 Open Web Dashboard</span>
-    </a>
-
-    <div id="pinPromptArea" class="card hidden" style="border-color: var(--primary);">
-      <label id="pinLabel" for="verifyPinInput" class="info-label" style="color: var(--primary);">Enter 4-Digit Master PIN</label>
-      <div style="display: flex; gap: 6px; margin-top: 4px;">
-        <input type="password" id="verifyPinInput" maxlength="4" placeholder="••••" inputmode="numeric" style="margin: 0; flex: 1;">
-        <button id="submitPinBtn" class="btn btn-primary" style="width: auto; padding: 0 14px;">Unlock</button>
-        <button id="cancelPinBtn" class="btn btn-secondary" style="width: auto; padding: 0 10px;">Cancel</button>
-      </div>
-      <a id="forgotPinLink" href="#" style="font-size: 11px; color: var(--text-muted); display: block; margin-top: 6px; text-align: center; text-decoration: none;">Forgot PIN?</a>
-    </div>
-  </div>
-
-  <div id="settingsScreen" class="screen hidden">
-    <button id="backToDashboardBtn" class="btn btn-secondary" style="margin-bottom: 10px; font-size: 12px; padding: 7px;">
-      ← Back to Dashboard
-    </button>
-
-    <div class="card">
-      <div class="info-label" style="font-size: 11px; margin-bottom: 8px;">PROFILE SETTINGS</div>
-      
-      <label class="info-label" for="editUserNameInput">YOUR NAME</label>
-      <input type="text" id="editUserNameInput">
-
-      <label class="info-label" for="editPartnerNameInput">PARTNER NAME</label>
-      <input type="text" id="editPartnerNameInput">
-
-      <label class="info-label" for="editPartnerEmailInput">PARTNER EMAIL</label>
-      <input type="email" id="editPartnerEmailInput">
-
-      <div id="emailWarningNotice" style="background: var(--warning-bg); border-left: 3px solid var(--warning-border); padding: 6px 8px; border-radius: 4px; font-size: 10px; color: var(--warning-text); margin-bottom: 8px;">
-        ⚠️ Changing email dispatches an alert to your existing partner.
-      </div>
-
-      <button id="saveProfileBtn" class="btn btn-primary">
-        Save Profile
-      </button>
-      <p id="profileStatusText" style="font-size: 11px; text-align: center; margin-top: 4px; display: none;"></p>
-    </div>
-
-    <div class="card">
-      <div id="domainSectionTitle" class="info-label" style="font-size: 11px; margin-bottom: 2px;">🚫 CUSTOM BLOCKLIST</div>
-      <p id="domainSectionSubtext" style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
-        Explicitly listed domains will be intercepted.
-      </p>
-
-      <div class="segmented-control">
-        <button id="modeBlocklistBtn" class="btn-segmented active">Blocklist</button>
-        <button id="modeWhitelistBtn" class="btn-segmented">Whitelist</button>
-      </div>
-
-      <div id="domainContainer">
-        <div id="editDomainRow" style="display: flex; gap: 6px; margin-bottom: 6px;">
-          <input type="text" id="domainInput" placeholder="e.g., website.com" style="margin: 0; flex: 1;">
-          <button id="addDomainBtn" class="btn btn-primary" style="width: auto; padding: 0 14px;">Add</button>
-        </div>
-        <ul id="domainView" class="domain-list"></ul>
-      </div>
-    </div>
-
-    <div class="card" id="managementRow">
-      <div class="info-label" style="font-size: 11px; margin-bottom: 4px;">YOUR SAVED REPORT</div>
-      <p style="font-size: 11px; color: var(--text-muted); line-height: 1.4; margin-bottom: 10px;">
-        To keep Virtue free and completely private, your activity report is saved inside a private folder on your Google Drive.
-      </p>
-
-      <label class="info-label" style="font-size: 10px;">📁 CONNECTED GOOGLE ACCOUNT</label>
-      <div id="settingsUserEmail" class="info-value" style="font-weight: bold;">Loading...</div>
-    </div>
-  </div>
-
-  <div id="forgotPinModal" class="card hidden" style="position: absolute; top: 20px; left: 12px; right: 12px; z-index: 100; border-color: var(--primary); box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-    <div class="info-label" style="color: var(--primary); font-size: 11px; margin-bottom: 6px;">🔑 RECOVER MASTER PIN</div>
-    <p style="font-size: 11px; color: var(--text-main); line-height: 1.4; margin-bottom: 12px;">
-      Send your 4-digit security PIN to your connected Google Account email address.
-    </p>
-    <div style="display: flex; gap: 6px;">
-      <button id="sendRecoveryEmailBtn" class="btn btn-primary" style="flex: 1; padding: 7px; font-size: 12px;">Send Email</button>
-      <button id="closeForgotPinBtn" class="btn btn-secondary" style="width: auto; padding: 7px 12px; font-size: 12px;">Cancel</button>
-    </div>
-  </div>
+  <button id="openDashboardBtn" class="btn btn-primary">
+    📊 Open Web Dashboard
+  </button>
+  
+  <button id="openOptionsBtn" class="btn btn-outline">
+    ⚙️ Extension Settings
+  </button>
 
   <script src="popup.js"></script>
 </body>

@@ -1,262 +1,196 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pause & Reflect — Virtue</title>
+  <title>Virtue | Site Restricted</title>
   <style>
     :root {
-      --bg-color: #f8fafc;
+      --primary: #198754;
+      --bg: #f8f9fa;
       --card-bg: #ffffff;
-      --text-main: #1e293b;
-      --text-muted: #64748b;
-      --accent-color: #198754;
-      --accent-hover: #146c43;
-      --border-color: #e2e8f0;
-      --warning-bg: #fefce8;
-      --warning-border: #fef08a;
-      --warning-text: #854d0e;
-      --danger-color: #d93025;
-      --danger-hover: #a50e0e;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
+      --text-main: #212529;
+      --text-muted: #6c757d;
+      --danger: #dc3545;
+      --border: #e9ecef;
     }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: var(--bg-color);
+      background-color: var(--bg);
       color: var(--text-main);
       display: flex;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
+      margin: 0;
       padding: 20px;
+      box-sizing: border-box;
     }
 
     .card {
       background: var(--card-bg);
-      border-radius: 16px;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+      border: 1px solid var(--border);
+      max-width: 440px;
       width: 100%;
-      max-width: 500px;
-      padding: 40px 32px;
+      padding: 32px 24px;
       text-align: center;
-      border: 1px solid var(--border-color);
     }
 
-    .brand-header {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      margin-bottom: 24px;
-    }
-
-    .brand-header img {
-      height: 120px;
-      width: auto;
-      object-fit: contain;
-    }
-
-    .brand-title {
-      font-size: 1.3rem;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      color: var(--accent-color);
-    }
-
-    .scripture-card {
-      background: #f1f5f9;
-      border-left: 4px solid var(--accent-color);
-      padding: 16px;
-      border-radius: 8px;
-      margin-bottom: 24px;
-      text-align: left;
-      min-height: 90px;
-    }
-
-    .scripture-text {
-      font-size: 0.98rem;
-      font-style: italic;
-      color: #334155;
-      line-height: 1.5;
-      margin-bottom: 8px;
-    }
-
-    .scripture-ref {
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-align: right;
-    }
-
-    .message {
-      font-size: 0.98rem;
-      color: var(--text-muted);
-      line-height: 1.5;
-      margin-bottom: 28px;
-    }
-
-    .btn-safety {
-      background-color: var(--accent-color);
-      color: white;
-      border: none;
-      padding: 14px 20px;
-      font-size: 1rem;
-      font-weight: 600;
-      border-radius: 10px;
-      cursor: pointer;
-      width: 100%;
-      transition: background-color 0.2s ease;
-    }
-
-    .btn-safety:hover {
-      background-color: var(--accent-hover);
-    }
-
-    .override-link {
-      display: inline-block;
-      margin-top: 18px;
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      text-decoration: underline;
-      cursor: pointer;
-    }
-
-    .override-link:hover {
-      color: var(--text-main);
-    }
-
-    .pin-box {
-      margin-top: 20px;
-      padding-top: 20px;
-      border-top: 1px dashed var(--border-color);
-    }
-
-    .warning-box {
-      background-color: var(--warning-bg);
-      border: 1px solid var(--warning-border);
-      color: var(--warning-text);
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 0.85rem;
-      line-height: 1.4;
-      margin-bottom: 16px;
-      text-align: left;
-    }
-
-    .pin-input-group {
-      display: flex;
-      justify-content: center;
-      gap: 10px;
+    .icon {
+      font-size: 48px;
       margin-bottom: 12px;
     }
 
-    input[type="password"] {
-      width: 130px;
-      padding: 10px;
-      font-size: 1.1rem;
-      text-align: center;
-      letter-spacing: 4px;
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      outline: none;
+    h1 {
+      font-size: 22px;
+      margin: 0 0 8px 0;
+      color: var(--text-main);
     }
 
-    input[type="password"]:focus {
-      border-color: var(--accent-color);
-    }
-
-    .btn-override {
-      background-color: var(--danger-color);
-      color: white;
-      border: none;
-      padding: 10px 18px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-
-    .btn-override:hover {
-      background-color: var(--danger-hover);
-    }
-
-    .forgot-pin-link {
-      display: inline-block;
-      font-size: 0.8rem;
+    p {
+      font-size: 14px;
       color: var(--text-muted);
-      text-decoration: underline;
+      margin: 0 0 20px 0;
+      line-height: 1.5;
+    }
+
+    .target-url {
+      word-break: break-all;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
       cursor: pointer;
-      margin-top: 4px;
+      border: none;
+      transition: background-color 0.2s;
     }
 
-    .forgot-pin-link:hover {
-      color: var(--accent-color);
+    .btn-primary {
+      background-color: var(--primary);
+      color: white;
+    }
+    .btn-primary:hover {
+      background-color: #146c43;
     }
 
-    .footer {
-      font-size: 11px;
-      color: #cbd5e1;
-      border-top: 1px solid #f1f5f9;
-      padding-top: 16px;
-      margin-top: 28px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
+    .btn-secondary {
+      background-color: #e9ecef;
+      color: var(--text-main);
+    }
+    .btn-secondary:hover {
+      background-color: #dee2e6;
     }
 
-    .hidden {
-      display: none !important;
+    .pin-input-container {
+      margin-top: 15px;
+      display: none;
+    }
+
+    input[type="password"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 16px;
+      text-align: center;
+      box-sizing: border-box;
+      margin-bottom: 10px;
+    }
+
+    .error-msg {
+      color: var(--danger);
+      font-size: 12px;
+      margin-top: 6px;
+      display: none;
     }
   </style>
 </head>
 <body>
 
   <div class="card">
-    <div class="brand-header">
-      <img src="virtue_logo.png" alt="Virtue Logo">
-      <div class="brand-title">VIRTUE</div>
+    <div class="icon">🛑</div>
+    <h1>Website Restricted</h1>
+    <p>Access to <span id="targetUrlText" class="target-url">this site</span> is restricted under your current Virtue accountability settings.</p>
+
+    <div class="btn-group">
+      <button id="goBackBtn" class="btn-primary">Return to Dashboard</button>
+      <button id="showPinBtn" class="btn-secondary">Enter Master PIN to Proceed</button>
     </div>
 
-    <div class="scripture-card">
-      <div class="scripture-text" id="scriptureText">"No temptation has overtaken you except what is common to mankind. And God is faithful; he will not let you be tempted beyond what you can bear."</div>
-      <div class="scripture-ref" id="scriptureRef">1 Corinthians 10:13</div>
+    <div id="pinContainer" class="pin-input-container">
+      <input type="password" id="pinInput" placeholder="Enter Master PIN" maxlength="8">
+      <button id="submitPinBtn" class="btn-primary">Verify & Proceed</button>
+      <div id="pinError" class="error-msg">Incorrect Master PIN.</div>
     </div>
-
-    <p class="message">
-      <span id="userName">Friend</span>, take a breath. You're not alone in this.<br>
-      This site was paused to help you stay on the path.
-    </p>
-
-    <button class="btn-safety" id="safetyBtn">↩️ Return to Safety</button>
-
-    <a class="override-link" id="revealOverrideLink">I need to proceed anyway</a>
-
-    <div class="pin-box hidden" id="overridePanel">
-      <div class="warning-box">
-        ⚠️ <strong>Need to view this page anyway?</strong><br>
-        Entering your PIN will unblock this site and log an overridden alert on the report sent to <span id="partnerName">your partner</span>.
-      </div>
-
-      <div class="pin-input-group">
-        <input type="password" id="pinInput" maxlength="4" placeholder="••••" inputmode="numeric">
-        <button class="btn-override" id="confirmOverrideBtn">Confirm</button>
-      </div>
-
-      <div>
-        <a class="forgot-pin-link" id="forgotPinLink">Forgot PIN?</a>
-      </div>
-    </div>
-
-    <div class="footer">Virtue Accountability Engine</div>
   </div>
 
-  <!-- Separate JS file to satisfy Manifest V3 CSP -->
-  <script src="blocked.js"></script>
+  <script>
+    const DASHBOARD_FALLBACK = "https://tbehman.github.io/virtue-extension/";
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetUrl = urlParams.get("url") || "";
+
+    if (targetUrl) {
+      try {
+        const domain = new URL(targetUrl).hostname.replace('www.', '');
+        document.getElementById("targetUrlText").textContent = domain;
+      } catch(e) {
+        document.getElementById("targetUrlText").textContent = targetUrl;
+      }
+    }
+
+    // Always redirect "Return to Dashboard" directly to GitHub Pages
+    document.getElementById("goBackBtn").addEventListener("click", () => {
+      window.location.href = DASHBOARD_FALLBACK;
+    });
+
+    document.getElementById("showPinBtn").addEventListener("click", () => {
+      document.getElementById("pinContainer").style.display = "block";
+      document.getElementById("showPinBtn").style.display = "none";
+      document.getElementById("pinInput").focus();
+    });
+
+    document.getElementById("submitPinBtn").addEventListener("click", verifyPin);
+    document.getElementById("pinInput").addEventListener("keypress", (e) => {
+      if (e.key === "Enter") verifyPin();
+    });
+
+    function verifyPin() {
+      const enteredPin = document.getElementById("pinInput").value;
+      const errorEl = document.getElementById("pinError");
+
+      chrome.storage.local.get(["masterPin"], (res) => {
+        if (res.masterPin && enteredPin === res.masterPin) {
+          errorEl.style.display = "none";
+          
+          // Grant temporary bypass and navigate directly forward
+          chrome.runtime.sendMessage({ type: "GRANT_TEMP_BYPASS", url: targetUrl }, () => {
+            if (targetUrl) {
+              window.location.href = targetUrl;
+            } else {
+              window.location.href = DASHBOARD_FALLBACK;
+            }
+          });
+        } else {
+          errorEl.style.display = "block";
+          document.getElementById("pinInput").value = "";
+        }
+      });
+    }
+  </script>
 </body>
 </html>
