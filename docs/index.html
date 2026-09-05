@@ -100,13 +100,22 @@
       padding: 14px 20px; background: #fdfdfe; border-bottom: 1px solid var(--border);
       font-weight: bold; font-size: 14px; color: var(--text-main);
     }
-    table { width: 100%; border-collapse: collapse; text-align: left; }
-    th, td { padding: 12px 20px; border-bottom: 1px solid var(--border); font-size: 13px; }
+
+    /* Fixed Table Layout with Balanced Column Widths */
+    table { width: 100%; border-collapse: collapse; text-align: left; table-layout: fixed; }
+    th, td { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
     th { background: #fdfdfe; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
     tr:last-child td { border-bottom: none; }
 
+    /* Explicit Widths for Complete Activity Log Table */
+    #fullLogTableContainer th:nth-child(1), #fullLogTable td:nth-child(1) { width: 18%; } /* Time */
+    #fullLogTableContainer th:nth-child(2), #fullLogTable td:nth-child(2) { width: 22%; } /* Device */
+    #fullLogTableContainer th:nth-child(3), #fullLogTable td:nth-child(3) { width: 15%; } /* Status */
+    #fullLogTableContainer th:nth-child(4), #fullLogTable td:nth-child(4) { width: 22%; } /* Page Title / Query */
+    #fullLogTableContainer th:nth-child(5), #fullLogTable td:nth-child(5) { width: 23%; } /* URL Path */
+
     .text-truncate {
-      max-width: 280px; white-space: nowrap; overflow: hidden;
+      max-width: 100%; white-space: nowrap; overflow: hidden;
       text-overflow: ellipsis; display: inline-block; vertical-align: middle;
     }
     .device-badge {
@@ -146,10 +155,10 @@
       #fullLogTable td:nth-child(1),
       #fullLogTable td:nth-child(2),
       #fullLogTable td:nth-child(3) {
-        display: inline-block; padding: 2px 6px 2px 0; border: none; font-size: 11px;
+        display: inline-block; padding: 2px 6px 2px 0; border: none; font-size: 11px; width: auto !important;
       }
       #fullLogTable td:nth-child(4), #fullLogTable td:nth-child(5) {
-        display: block; padding: 4px 0 2px 0; border: none;
+        display: block; padding: 4px 0 2px 0; border: none; width: 100% !important;
       }
       .text-truncate {
         max-width: 100% !important; white-space: normal !important; word-break: break-all !important; overflow: visible !important;
@@ -189,7 +198,7 @@
           <p class="value" id="metricFlagged">0</p>
         </div>
         <div class="metric-card">
-          <h3>Search Terms</h3>
+          <h3>Search Queries</h3>
           <p class="value" id="metricSearches">0</p>
         </div>
         <div class="metric-card">
@@ -215,7 +224,7 @@
         <div class="card" style="margin-bottom: 0;">
           <div class="card-header">📊 Top Visited Domains</div>
           <table>
-            <thead><tr><th>Domain</th><th style="text-align: right;">Visits</th></tr></thead>
+            <thead><tr><th style="width: 75%;">Domain</th><th style="width: 25%; text-align: right;">Visits</th></tr></thead>
             <tbody id="topDomainsTable"></tbody>
           </table>
         </div>
@@ -223,7 +232,7 @@
         <div class="card" style="margin-bottom: 0;">
           <div class="card-header">🔍 Recent Search Queries</div>
           <table>
-            <thead><tr><th>Time</th><th>Search Query</th></tr></thead>
+            <thead><tr><th style="width: 35%;">Time</th><th style="width: 65%;">Search Query</th></tr></thead>
             <tbody id="searchQueryTable"></tbody>
           </table>
           <div id="searchExpandBar" style="padding: 10px 20px; text-align: center; border-top: 1px solid var(--border);" class="hidden">
@@ -253,7 +262,7 @@
           </div>
         </div>
         
-        <div id="logTableContainer">
+        <div id="fullLogTableContainer">
           <table>
             <thead>
               <tr>
@@ -524,7 +533,7 @@
     function renderFullLog() {
       const viewMode = document.getElementById("logViewSelect").value;
       const sortMode = document.getElementById("logSortSelect").value;
-      const container = document.getElementById("logTableContainer");
+      const container = document.getElementById("fullLogTableContainer");
 
       let logsToRender = [...globalBrowsingLogs];
       if (sortMode === "oldest") {
@@ -536,14 +545,14 @@
           <table>
             <thead>
               <tr>
-                <th>Time</th>
-                <th>Device</th>
-                <th>Status</th>
-                <th>Page Title / Query</th>
-                <th>URL Path</th>
+                <th style="width: 18%;">Time</th>
+                <th style="width: 22%;">Device</th>
+                <th style="width: 15%;">Status</th>
+                <th style="width: 22%;">Page Title / Query</th>
+                <th style="width: 23%;">URL Path</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="fullLogTable">
               ${logsToRender.map(log => {
                 const isBypassed = (log.title && log.title.includes("[VISITED]")) || (log.url && log.url.includes("virtue_bypass=true"));
                 const statusBadge = isBypassed 
