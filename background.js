@@ -5,6 +5,9 @@ import { deriveKeyFromPin, encryptData, decryptData } from './cryptoUtils.js';
 const SAFESEARCH_RULE_IDS = [101, 102, 103];
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
+// State guard for search query deduplication
+let lastLoggedSearch = { query: "", time: 0 };
+
 // ==========================================
 // 0. UTILITIES & DEVICE IDENTIFICATION
 // ==========================================
@@ -618,6 +621,18 @@ function processNavigation(url, tabId) {
     let title = tab ? tab.title : "";
     const searchQuery = extractSearchQuery(url);
     const cleanLocalTime = getCleanTimestamp();
+
+    // Prevent duplicate logging of identical search queries within 5 seconds
+    if (searchQuery) {
+      const now = Date.now();
+      if (
+        searchQuery.toLowerCase() === lastLoggedSearch.query.toLowerCase() && 
+        (now - lastLoggedSearch.time < 5000)
+      ) {
+        return; // Skip redundant navigation trigger
+      }
+      lastLoggedSearch = { query: searchQuery, time: now };
+    }
 
     if (tab && tab.incognito) { title = `[INCOGNITO] ${title}`; }
     let finalUrl = url;
