@@ -18,9 +18,9 @@
       --danger-bg: #f8d7da;
       --danger-border: #f5c2c7;
       --danger-text: #842029;
-      --warning-bg: #fff3cd;
-      --warning-border: #ffe69c;
-      --warning-text: #664d03;
+      --warning-bg: #fffbf0;
+      --warning-border: #ffe8b3;
+      --warning-text: #8a5300;
       --border: #e9ecef;
     }
 
@@ -40,15 +40,41 @@
     header h1 { margin: 0; color: var(--primary); font-size: 26px; display: flex; align-items: center; gap: 12px; }
     header p { margin: 4px 0 0 0; color: var(--text-muted); font-size: 14px; font-weight: 500; }
     
-    .status-badge {
-      padding: 8px 16px; border-radius: 20px;
-      font-size: 13px; font-weight: bold; display: inline-flex; align-items: center; gap: 6px;
-      margin-bottom: 15px;
+    /* Integrated Status Banner */
+    .status-banner {
+      padding: 16px 20px;
+      border-radius: 12px;
+      margin-bottom: 25px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
     }
-    .status-clear { background: #d1e7dd; color: #0f5132; }
-    .status-flagged { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
+    .status-banner-clear {
+      background: #eef7f2;
+      border: 1px solid #c3e6d1;
+      color: #0f5132;
+    }
+    .status-banner-flagged {
+      background: var(--danger-bg);
+      border: 1px solid var(--danger-border);
+      color: var(--danger-text);
+    }
+    .status-banner-icon {
+      font-size: 22px;
+      line-height: 1;
+      margin-top: 2px;
+    }
+    .status-banner-title {
+      font-weight: bold;
+      font-size: 15px;
+      margin-bottom: 2px;
+    }
+    .status-banner-subtext {
+      font-size: 13px;
+      opacity: 0.9;
+    }
 
-    /* Clean 4-Box Metric Scorecard */
+    /* Scorecard 4-Box Grid with Left-Aligned Icons */
     .metrics-grid {
       display: grid; grid-template-columns: repeat(4, 1fr);
       gap: 15px; margin-bottom: 25px;
@@ -58,28 +84,49 @@
     }
 
     .metric-card {
-      background: var(--card-bg); padding: 20px; border-radius: 12px;
+      background: var(--card-bg); padding: 18px 20px; border-radius: 12px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border);
-      text-align: center;
     }
-    .metric-card h3 { margin: 0 0 8px 0; font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    .metric-card .value { font-size: 26px; font-weight: bold; color: var(--text-main); margin: 0; }
+    .metric-card h3 { 
+      margin: 0 0 10px 0; font-size: 11px; color: var(--text-muted); 
+      text-transform: uppercase; letter-spacing: 0.5px; 
+    }
+    .metric-body {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .metric-icon {
+      font-size: 22px;
+      line-height: 1;
+      opacity: 0.85;
+    }
+    .metric-card .value { font-size: 24px; font-weight: bold; color: var(--text-main); margin: 0; }
     .metric-card .value.danger { color: var(--danger); }
 
-    /* Priority Audit Notice Banner */
+    /* Subtle Amber Priority Audit Notice Banner */
     .audit-notice {
-      background: var(--danger-bg);
-      border: 1px solid var(--danger-border);
-      color: var(--danger-text);
-      padding: 16px 20px;
-      border-radius: 8px;
+      background: var(--warning-bg);
+      border: 1px solid var(--warning-border);
+      color: var(--warning-text);
+      padding: 18px 22px;
+      border-radius: 12px;
       margin-bottom: 25px;
       font-size: 13px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.02);
     }
-    .audit-notice h4 { margin: 0 0 8px 0; font-size: 15px; color: var(--danger-text); display: flex; align-items: center; gap: 6px; }
-    .audit-notice ul { margin: 6px 0 0 0; padding-left: 20px; }
-    .audit-notice li { margin-bottom: 6px; }
-    .audit-notice a { color: var(--danger-text); }
+    .audit-notice h4 { 
+      margin: 0 0 10px 0; font-size: 15px; font-weight: bold;
+      color: var(--warning-text); display: flex; align-items: center; gap: 8px; 
+    }
+    .audit-notice ul { margin: 6px 0 10px 0; padding-left: 20px; }
+    .audit-notice li { margin-bottom: 4px; }
+    .audit-notice a { color: var(--warning-text); }
+    .audit-notice-footer {
+      font-size: 12px;
+      color: #9c6300;
+      margin-top: 10px;
+    }
 
     #loadingState, #errorState {
       text-align: center; padding: 50px; background: var(--card-bg);
@@ -188,26 +235,42 @@
 
     <div id="dashboardView" class="hidden">
       
-      <div>
-        <div id="statusBadge" class="status-badge status-clear">🟢 ALL CLEAR</div>
+      <div id="statusBanner" class="status-banner status-banner-clear">
+        <div class="status-banner-icon">✅</div>
+        <div>
+          <div class="status-banner-title">All Clear — Full Monitoring Active</div>
+          <div class="status-banner-subtext">No blocked sites visited. No bypasses detected.</div>
+        </div>
       </div>
 
       <div class="metrics-grid">
         <div class="metric-card">
           <h3>Blocked Sites Visited</h3>
-          <p class="value" id="metricFlagged">0</p>
+          <div class="metric-body">
+            <span class="metric-icon">🛡️</span>
+            <p class="value" id="metricFlagged">0</p>
+          </div>
         </div>
         <div class="metric-card">
           <h3>Search Queries</h3>
-          <p class="value" id="metricSearches">0</p>
+          <div class="metric-body">
+            <span class="metric-icon">🔍</span>
+            <p class="value" id="metricSearches">0</p>
+          </div>
         </div>
         <div class="metric-card">
           <h3>Websites Visited</h3>
-          <p class="value" id="metricDomains">0</p>
+          <div class="metric-body">
+            <span class="metric-icon">🌐</span>
+            <p class="value" id="metricDomains">0</p>
+          </div>
         </div>
         <div class="metric-card">
           <h3>Days Active</h3>
-          <p class="value" id="metricActiveDays">0 / 7</p>
+          <div class="metric-body">
+            <span class="metric-icon">📅</span>
+            <p class="value" id="metricActiveDays">0 / 7</p>
+          </div>
         </div>
       </div>
 
@@ -437,13 +500,25 @@
         (log.url && log.url.includes("virtue_bypass=true"))
       );
 
-      const statusBadge = document.getElementById("statusBadge");
+      const statusBanner = document.getElementById("statusBanner");
       if (ignoredWarningLogs.length > 0) {
-        statusBadge.className = "status-badge status-flagged";
-        statusBadge.innerHTML = `🔴 ${ignoredWarningLogs.length} ITEM(S) NEED REVIEW`;
+        statusBanner.className = "status-banner status-banner-flagged";
+        statusBanner.innerHTML = `
+          <div class="status-banner-icon">🔴</div>
+          <div>
+            <div class="status-banner-title">Attention Required — ${ignoredWarningLogs.length} Restriction Override(s)</div>
+            <div class="status-banner-subtext">One or more blocked websites were accessed using an override PIN.</div>
+          </div>
+        `;
       } else {
-        statusBadge.className = "status-badge status-clear";
-        statusBadge.innerHTML = "🟢 ALL CLEAR";
+        statusBanner.className = "status-banner status-banner-clear";
+        statusBanner.innerHTML = `
+          <div class="status-banner-icon">✅</div>
+          <div>
+            <div class="status-banner-title">All Clear — Full Monitoring Active</div>
+            <div class="status-banner-subtext">No blocked sites visited. No bypasses detected.</div>
+          </div>
+        `;
       }
 
       processAuditStream(heartbeats, ignoredWarningLogs);
@@ -648,7 +723,7 @@
 
         if (unmonitoredWindows.length > 0) {
           hasAuditNotice = true;
-          noticeHtml += `<div style="margin-top: 6px;"><strong>⚠️ ${devName} — Unmonitored Incognito Window(s):</strong><ul style="margin: 4px 0 8px 0; padding-left: 20px;">`;
+          noticeHtml += `<div style="margin-top: 4px;"><strong>${devName}</strong> — Unmonitored Incognito Window(s):<ul style="margin: 6px 0 8px 0; padding-left: 20px;">`;
 
           unmonitoredWindows.forEach(win => {
             const startStr = formatTime(win.start.toISOString());
@@ -669,7 +744,7 @@
 
               noticeHtml += `<li>${startStr} – ${endStr} (${durationStr})</li>`;
             } else {
-              noticeHtml += `<li style="color: #dc3545; font-weight: bold;">${startStr} – Present (Active Unmonitored Session)</li>`;
+              noticeHtml += `<li style="font-weight: bold;">${startStr} – Present (Active Unmonitored Session)</li>`;
             }
           });
 
@@ -679,12 +754,12 @@
 
       if (ignoredWarningLogs.length > 0) {
         hasAuditNotice = true;
-        noticeHtml += `<div style="margin-top: 8px;"><strong>🛑 Restricted Sites Visited (${ignoredWarningLogs.length} Ignored Warnings):</strong><ul style="margin: 4px 0 0 0; padding-left: 20px;">`;
+        noticeHtml += `<div style="margin-top: 10px;"><strong>Restricted Sites Visited (${ignoredWarningLogs.length} Ignored Warnings):</strong><ul style="margin: 6px 0 0 0; padding-left: 20px;">`;
         ignoredWarningLogs.forEach(log => {
           const timeStr = formatTime(log.timestamp);
           const dev = log.device || "Desktop";
           const title = log.title ? log.title.replace("[VISITED]", "").trim() : "Untitled";
-          noticeHtml += `<li><strong>${timeStr}</strong> (${dev}) — <em>"${title}"</em> <br><a href="${log.url}" target="_blank" style="color: #842029; font-size: 11px;">${log.url}</a></li>`;
+          noticeHtml += `<li><strong>${timeStr}</strong> (${dev}) — <em>"${title}"</em> <br><a href="${log.url}" target="_blank" style="font-size: 11px;">${log.url}</a></li>`;
         });
         noticeHtml += `</ul></div>`;
       }
@@ -693,7 +768,11 @@
 
       if (hasAuditNotice) {
         noticeContainer.className = "audit-notice";
-        noticeContainer.innerHTML = `<h4>⚠️ ATTENTION REQUIRED</h4>${noticeHtml}`;
+        noticeContainer.innerHTML = `
+          <h4>Attention Required</h4>
+          ${noticeHtml}
+          <div class="audit-notice-footer">These gaps may indicate unmonitored browsing periods.</div>
+        `;
       } else {
         noticeContainer.className = "hidden";
       }
