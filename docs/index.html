@@ -111,23 +111,56 @@
       border: 1px solid var(--warning-border);
       border-left: 5px solid var(--warning-accent);
       color: var(--warning-text);
-      padding: 18px 22px;
-      border-radius: 10px;
+      padding: 20px 24px;
+      border-radius: 12px;
       margin-bottom: 25px;
       font-size: 13px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.04);
     }
     .audit-notice h4 { 
-      margin: 0 0 10px 0; font-size: 15px; font-weight: 800;
+      margin: 0 0 14px 0; font-size: 16px; font-weight: 800;
       color: #92400e; display: flex; align-items: center; gap: 8px; 
     }
-    .audit-notice ul { margin: 6px 0 10px 0; padding-left: 20px; }
-    .audit-notice li { margin-bottom: 4px; }
+    
+    /* Structured Audit Sub-Sections */
+    .audit-section {
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid #ebd39c;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .audit-section:last-of-type {
+      margin-bottom: 8px;
+    }
+    .audit-section-title {
+      font-weight: 700;
+      font-size: 13px;
+      color: #78350f;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .audit-notice ul { margin: 4px 0 8px 0; padding-left: 20px; }
+    .audit-notice li { margin-bottom: 5px; line-height: 1.4; }
     .audit-notice a { color: #92400e; font-weight: 600; }
+    
+    .fix-box {
+      background: #fef3c7;
+      border: 1px solid #fde68a;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: #78350f;
+      line-height: 1.4;
+    }
+    
     .audit-notice-footer {
       font-size: 12px;
       color: #b45309;
-      margin-top: 10px;
+      margin-top: 8px;
       font-weight: 500;
     }
 
@@ -693,6 +726,24 @@
       }
     }
 
+    function formatTimeRange(startIso, endIso) {
+      const startDate = new Date(startIso);
+      const startDay = startDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+      const startTime = startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      if (!endIso) {
+        return `<strong>${startDay}</strong> │ ${startTime} – <strong>Present (Active Session)</strong>`;
+      }
+
+      const endDate = new Date(endIso);
+      const endTime = endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const diffMin = Math.round((endDate - startDate) / 60000);
+
+      let durationStr = diffMin < 1 ? "< 1 min" : diffMin < 60 ? `${diffMin} min` : `${(diffMin / 60).toFixed(1)} hr`;
+
+      return `<strong>${startDay}</strong> │ ${startTime} – ${endTime} (${durationStr})`;
+    }
+
     function processAuditStream(heartbeats, ignoredWarningLogs, userName) {
       const devices = {};
       heartbeats.forEach(hb => {
@@ -733,52 +784,59 @@
           const hasActiveSession = unmonitoredWindows.some(w => w.end === null);
           const possessiveName = userName && userName !== "User" ? (userName.endsWith('s') ? `${userName}'` : `${userName}'s`) : "the user's";
 
-          noticeHtml += `<div style="margin-top: 4px;"><strong>${devName}</strong> — Unmonitored Incognito Window(s):<ul style="margin: 6px 0 8px 0; padding-left: 20px;">`;
+          noticeHtml += `
+            <div class="audit-section">
+              <div class="audit-section-title">🕵️ Unmonitored Incognito Sessions (${devName})</div>
+              <ul>
+          `;
 
           unmonitoredWindows.forEach(win => {
-            const startStr = formatTime(win.start.toISOString());
+            const timeRangeText = formatTimeRange(win.start.toISOString(), win.end ? win.end.toISOString() : null);
             if (win.end) {
-              const endStr = formatTime(win.end.toISOString());
-              const diffMs = win.end - win.start;
-              const diffMin = Math.round(diffMs / 60000);
-
-              let durationStr = "";
-              if (diffMin < 1) {
-                durationStr = "< 1 min";
-              } else if (diffMin < 60) {
-                durationStr = `${diffMin} min`;
-              } else {
-                const hrs = (diffMin / 60).toFixed(1);
-                durationStr = `${hrs} hr`;
-              }
-
-              noticeHtml += `<li>${startStr} – ${endStr} (${durationStr})</li>`;
+              noticeHtml += `<li>${timeRangeText}</li>`;
             } else {
-              noticeHtml += `<li style="font-weight: bold; color: #b45309;">🚨 ${startStr} – Present (Active Unmonitored Session)</li>`;
+              noticeHtml += `<li style="font-weight: bold; color: #b45309;">🚨 ${timeRangeText}</li>`;
             }
           });
 
-          noticeHtml += `</ul></div>`;
+          noticeHtml += `</ul>`;
 
           if (hasActiveSession) {
             noticeHtml += `
-              <div style="background: rgba(217, 119, 6, 0.1); border-radius: 6px; padding: 10px 12px; margin-top: 10px; font-size: 12px; color: #78350f;">
+              <div class="fix-box">
                 <strong>🛠️ How to Fix Active Gaps:</strong> On ${possessiveName} computer, open <code>chrome://extensions</code> ➔ click <strong>Details</strong> on Virtue ➔ turn ON <strong>"Allow in Incognito"</strong>.
               </div>
             `;
           }
+
+          noticeHtml += `</div>`;
         }
       });
 
       if (ignoredWarningLogs.length > 0) {
         hasAuditNotice = true;
-        noticeHtml += `<div style="margin-top: 10px;"><strong>Restricted Sites Visited (${ignoredWarningLogs.length} Ignored Warnings):</strong><ul style="margin: 6px 0 0 0; padding-left: 20px;">`;
+        const overrideCountText = ignoredWarningLogs.length === 1 ? "1 Override" : `${ignoredWarningLogs.length} Overrides`;
+
+        noticeHtml += `
+          <div class="audit-section">
+            <div class="audit-section-title">🛑 Restricted Sites Visited (${overrideCountText})</div>
+            <ul>
+        `;
+
         ignoredWarningLogs.forEach(log => {
-          const timeStr = formatTime(log.timestamp);
-          const dev = log.device || "Desktop";
+          const logDate = new Date(log.timestamp);
+          const dateStr = logDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+          const timeStr = logDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const title = log.title ? log.title.replace("[VISITED]", "").trim() : "Untitled";
-          noticeHtml += `<li><strong>${timeStr}</strong> (${dev}) — <em>"${title}"</em> <br><a href="${log.url}" target="_blank" style="font-size: 11px;">${log.url}</a></li>`;
+
+          noticeHtml += `
+            <li>
+              <strong>${dateStr}, ${timeStr}</strong> │ <em>"${title}"</em><br>
+              <a href="${log.url}" target="_blank" style="font-size: 11px;">${log.url}</a>
+            </li>
+          `;
         });
+
         noticeHtml += `</ul></div>`;
       }
 
