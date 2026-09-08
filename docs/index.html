@@ -10,18 +10,19 @@
   <style>
     :root {
       --primary: #198754;
-      --bg: #f8f9fa;
+      --bg: #f1f3f5;
       --card-bg: #ffffff;
       --text-main: #212529;
-      --text-muted: #6c757d;
+      --text-muted: #5f666d;
       --danger: #dc3545;
       --danger-bg: #f8d7da;
       --danger-border: #f5c2c7;
       --danger-text: #842029;
-      --warning-bg: #fffbf0;
-      --warning-border: #ffe8b3;
-      --warning-text: #8a5300;
-      --border: #e9ecef;
+      --warning-bg: #fffcf0;
+      --warning-border: #f2d388;
+      --warning-accent: #d97706;
+      --warning-text: #78350f;
+      --border: #dce1e6;
     }
 
     body {
@@ -35,10 +36,10 @@
 
     header {
       display: flex; justify-content: space-between; align-items: flex-end;
-      margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid var(--border);
+      margin-bottom: 22px; padding-bottom: 16px; border-bottom: 2px solid var(--border);
     }
     header h1 { margin: 0; color: var(--primary); font-size: 26px; display: flex; align-items: center; gap: 12px; }
-    header p { margin: 4px 0 0 0; color: var(--text-muted); font-size: 14px; font-weight: 500; }
+    header p { margin: 4px 0 0 0; color: var(--text-muted); font-size: 14px; font-weight: 600; }
     
     /* Integrated Status Banner */
     .status-banner {
@@ -48,11 +49,12 @@
       display: flex;
       align-items: flex-start;
       gap: 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
     .status-banner-clear {
-      background: #eef7f2;
-      border: 1px solid #c3e6d1;
-      color: #0f5132;
+      background: #e8f5e9;
+      border: 1px solid #a5d6a7;
+      color: #1b5e20;
     }
     .status-banner-flagged {
       background: var(--danger-bg);
@@ -65,7 +67,7 @@
       margin-top: 2px;
     }
     .status-banner-title {
-      font-weight: bold;
+      font-weight: 700;
       font-size: 15px;
       margin-bottom: 2px;
     }
@@ -85,11 +87,11 @@
 
     .metric-card {
       background: var(--card-bg); padding: 18px 20px; border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05); border: 1px solid var(--border);
     }
     .metric-card h3 { 
       margin: 0 0 10px 0; font-size: 11px; color: var(--text-muted); 
-      text-transform: uppercase; letter-spacing: 0.5px; 
+      text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700;
     }
     .metric-body {
       display: flex;
@@ -97,40 +99,41 @@
       gap: 14px;
     }
     .metric-icon {
-      font-size: 22px;
+      font-size: 24px;
       line-height: 1;
-      opacity: 0.85;
     }
-    .metric-card .value { font-size: 24px; font-weight: bold; color: var(--text-main); margin: 0; }
+    .metric-card .value { font-size: 25px; font-weight: 800; color: var(--text-main); margin: 0; }
     .metric-card .value.danger { color: var(--danger); }
 
-    /* Subtle Amber Priority Audit Notice Banner */
+    /* High-Contrast Subtle Amber Priority Audit Notice Banner */
     .audit-notice {
       background: var(--warning-bg);
       border: 1px solid var(--warning-border);
+      border-left: 5px solid var(--warning-accent);
       color: var(--warning-text);
       padding: 18px 22px;
-      border-radius: 12px;
+      border-radius: 10px;
       margin-bottom: 25px;
       font-size: 13px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.04);
     }
     .audit-notice h4 { 
-      margin: 0 0 10px 0; font-size: 15px; font-weight: bold;
-      color: var(--warning-text); display: flex; align-items: center; gap: 8px; 
+      margin: 0 0 10px 0; font-size: 15px; font-weight: 800;
+      color: #92400e; display: flex; align-items: center; gap: 8px; 
     }
     .audit-notice ul { margin: 6px 0 10px 0; padding-left: 20px; }
     .audit-notice li { margin-bottom: 4px; }
-    .audit-notice a { color: var(--warning-text); }
+    .audit-notice a { color: #92400e; font-weight: 600; }
     .audit-notice-footer {
       font-size: 12px;
-      color: #9c6300;
+      color: #b45309;
       margin-top: 10px;
+      font-weight: 500;
     }
 
     #loadingState, #errorState {
       text-align: center; padding: 50px; background: var(--card-bg);
-      border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); margin-top: 20px;
+      border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-top: 20px;
     }
     #errorState { color: var(--danger); display: none; }
     .hidden { display: none !important; }
@@ -140,18 +143,18 @@
 
     .card {
       background: var(--card-bg); border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05); border: 1px solid var(--border);
       overflow: hidden; margin-bottom: 25px;
     }
     .card-header {
-      padding: 14px 20px; background: #fdfdfe; border-bottom: 1px solid var(--border);
-      font-weight: bold; font-size: 14px; color: var(--text-main);
+      padding: 14px 20px; background: #f8f9fa; border-bottom: 1px solid var(--border);
+      font-weight: 700; font-size: 14px; color: var(--text-main);
     }
 
     /* Fixed Table Layout with Balanced Column Widths */
     table { width: 100%; border-collapse: collapse; text-align: left; table-layout: fixed; }
     th, td { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
-    th { background: #fdfdfe; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    th { background: #ffffff; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
     tr:last-child td { border-bottom: none; }
 
     /* Explicit Widths for Complete Activity Log Table */
@@ -166,8 +169,8 @@
       text-overflow: ellipsis; display: inline-block; vertical-align: middle;
     }
     .device-badge {
-      background: #f1f3f4; color: #5f6368; padding: 3px 8px;
-      border-radius: 4px; font-size: 11px; white-space: nowrap;
+      background: #e9ecef; color: #495057; padding: 3px 8px;
+      border-radius: 4px; font-size: 11px; white-space: nowrap; font-weight: 500;
     }
     .flag-badge {
       background: #fce8e6; color: #d93025; padding: 3px 8px;
