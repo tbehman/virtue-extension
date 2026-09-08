@@ -131,7 +131,7 @@
       margin-bottom: 14px;
     }
     .audit-section:last-of-type {
-      margin-bottom: 8px;
+      margin-bottom: 0;
     }
     .audit-section-title {
       font-weight: 700;
@@ -160,7 +160,7 @@
     .audit-notice-footer {
       font-size: 12px;
       color: #b45309;
-      margin-top: 8px;
+      margin-top: 10px;
       font-weight: 500;
     }
 
@@ -809,6 +809,7 @@
             `;
           }
 
+          noticeHtml += `<div class="audit-notice-footer">These gaps may indicate unmonitored browsing periods.</div>`;
           noticeHtml += `</div>`;
         }
       });
@@ -847,7 +848,6 @@
         noticeContainer.innerHTML = `
           <h4>Attention Required</h4>
           ${noticeHtml}
-          <div class="audit-notice-footer">These gaps may indicate unmonitored browsing periods.</div>
         `;
       } else {
         noticeContainer.className = "hidden";
