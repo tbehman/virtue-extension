@@ -41,7 +41,6 @@
     header h1 { margin: 0; color: var(--primary); font-size: 26px; display: flex; align-items: center; gap: 12px; }
     header p { margin: 4px 0 0 0; color: var(--text-muted); font-size: 14px; font-weight: 600; }
     
-    /* Integrated Status Banner */
     .status-banner {
       padding: 16px 20px;
       border-radius: 12px;
@@ -76,7 +75,6 @@
       opacity: 0.9;
     }
 
-    /* Scorecard 4-Box Grid with Left-Aligned Icons */
     .metrics-grid {
       display: grid; grid-template-columns: repeat(4, 1fr);
       gap: 15px; margin-bottom: 25px;
@@ -105,7 +103,6 @@
     .metric-card .value { font-size: 25px; font-weight: 800; color: var(--text-main); margin: 0; }
     .metric-card .value.danger { color: var(--danger); }
 
-    /* High-Contrast Subtle Amber Priority Audit Notice Banner */
     .audit-notice {
       background: var(--warning-bg);
       border: 1px solid var(--warning-border);
@@ -122,7 +119,6 @@
       color: #92400e; display: flex; align-items: center; gap: 8px; 
     }
     
-    /* Structured Audit Sub-Sections */
     .audit-section {
       background: rgba(255, 255, 255, 0.7);
       border: 1px solid #ebd39c;
@@ -188,18 +184,16 @@
       color: var(--text-main);
     }
 
-    /* Fixed Table Layout with Balanced Column Widths */
     table { width: 100%; border-collapse: collapse; text-align: left; table-layout: fixed; }
     th, td { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
     th { background: #ffffff; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
     tr:last-child td { border-bottom: none; }
 
-    /* Explicit Widths for Complete Activity Log Table */
-    #fullLogTableContainer th:nth-child(1), #fullLogTable td:nth-child(1) { width: 18%; } /* Time */
-    #fullLogTableContainer th:nth-child(2), #fullLogTable td:nth-child(2) { width: 22%; } /* Device */
-    #fullLogTableContainer th:nth-child(3), #fullLogTable td:nth-child(3) { width: 15%; } /* Status */
-    #fullLogTableContainer th:nth-child(4), #fullLogTable td:nth-child(4) { width: 22%; } /* Page Title / Query */
-    #fullLogTableContainer th:nth-child(5), #fullLogTable td:nth-child(5) { width: 23%; } /* URL Path */
+    #fullLogTableContainer th:nth-child(1), #fullLogTable td:nth-child(1) { width: 18%; }
+    #fullLogTableContainer th:nth-child(2), #fullLogTable td:nth-child(2) { width: 22%; }
+    #fullLogTableContainer th:nth-child(3), #fullLogTable td:nth-child(3) { width: 15%; }
+    #fullLogTableContainer th:nth-child(4), #fullLogTable td:nth-child(4) { width: 22%; }
+    #fullLogTableContainer th:nth-child(5), #fullLogTable td:nth-child(5) { width: 23%; }
 
     .text-truncate {
       max-width: 100%; white-space: nowrap; overflow: hidden;
