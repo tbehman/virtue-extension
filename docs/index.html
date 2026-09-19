@@ -451,10 +451,10 @@
       try {
         const PROXY_URL = "https://script.google.com/macros/s/AKfycbx6dPxVNgROInLsl6CHp3SPwcjqR8nfYBGLFiMd-JnD5h4lAY3xWPMhhHnQ4DLmjDtVLg/exec";
         
-        const response = await fetch(`${PROXY_URL}?fileId=${fileId}`);
+        const response = await fetch(PROXY_URL + "?fileId=" + fileId);
         
         if (!response.ok) {
-          throw new Error(`Log access error (HTTP ${response.status}).`);
+          throw new Error("Log access error (HTTP " + response.status + ").");
         }
         
         const data = await response.json();
@@ -516,10 +516,8 @@
         message = errCode;
       }
 
-      errorContainer.innerHTML = `
-        <h2 style="color: var(--danger); margin-top: 0;">${title}</h2>
-        <p style="color: var(--text-main); font-size: 14px; max-width: 500px; margin: 0 auto; line-height: 1.6;">${message}</p>
-      `;
+      errorContainer.innerHTML = 'h2 style="color: var(--danger); margin-top: 0;"' + title + '/h2' +
+        'p style="color: var(--text-main); font-size: 14px; max-width: 500px; margin: 0 auto; line-height: 1.6;"' + message + '/p';
     }
 
     function processAndRender(allLogs, metadata) {
@@ -532,7 +530,7 @@
       if (globalBrowsingLogs.length > 0) {
         const oldest = new Date(globalBrowsingLogs[globalBrowsingLogs.length - 1].timestamp);
         const newest = new Date(globalBrowsingLogs[0].timestamp);
-        document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName} • ${formatDateShort(oldest)} – ${formatDateShort(newest)}`;
+        document.getElementById("dashboardSubheader").textContent = "Accountability Report for " + profileName + " • " + formatDateShort(oldest) + " – " + formatDateShort(newest);
       }
 
       const ignoredWarningLogs = globalBrowsingLogs.filter(log => 
@@ -543,22 +541,14 @@
       const statusBanner = document.getElementById("statusBanner");
       if (ignoredWarningLogs.length > 0) {
         statusBanner.className = "status-banner status-banner-flagged";
-        statusBanner.innerHTML = `
-          <div class="status-banner-icon">🔴</div>
-          <div>
-            <div class="status-banner-title">Attention Required — ${ignoredWarningLogs.length} Restriction Override(s)</div>
-            <div class="status-banner-subtext">One or more blocked websites were accessed using an override PIN.</div>
-          </div>
-        `;
+        statusBanner.innerHTML = '<div class="status-banner-icon">🔴</div>' +
+          '<div><div class="status-banner-title">Attention Required — ' + ignoredWarningLogs.length + ' Restriction Override(s)</div>' +
+          '<div class="status-banner-subtext">One or more blocked websites were accessed using an override PIN.</div></div>';
       } else {
         statusBanner.className = "status-banner status-banner-clear";
-        statusBanner.innerHTML = `
-          <div class="status-banner-icon">✅</div>
-          <div>
-            <div class="status-banner-title">All Clear — Full Monitoring Active</div>
-            <div class="status-banner-subtext">No blocked sites visited. No bypasses detected.</div>
-          </div>
-        `;
+        statusBanner.innerHTML = '<div class="status-banner-icon">✅</div>' +
+          '<div><div class="status-banner-title">All Clear — Full Monitoring Active</div>' +
+          '<div class="status-banner-subtext">No blocked sites visited. No bypasses detected.</div></div>';
       }
 
       processAuditStream(heartbeats, ignoredWarningLogs, profileName);
@@ -602,17 +592,15 @@
       const uniqueSearches = new Set(globalSearches.map(l => l.searchQuery.trim().toLowerCase()));
       document.getElementById("metricSearches").textContent = uniqueSearches.size;
       document.getElementById("metricDomains").textContent = Object.keys(domainCounts).length;
-      document.getElementById("metricActiveDays").textContent = `${Math.min(activeDaysSet.size, 7)} / 7`;
+      document.getElementById("metricActiveDays").textContent = Math.min(activeDaysSet.size, 7) + " / 7";
 
       renderDailyChart(dailyCounts);
 
       const sortedDomains = Object.entries(domainCounts).sort((a, b) => b[1] - a[1]).slice(0, 7);
-      document.getElementById("topDomainsTable").innerHTML = sortedDomains.map(([domain, count]) => `
-        <tr>
-          <td><a href="https://${domain}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: 500;">${domain}</a></td>
-          <td style="text-align: right; font-weight: bold;">${count}</td>
-        </tr>
-      `).join('') || "<tr><td colspan='2' style='color: var(--text-muted); text-align: center;'>No browsing recorded</td></tr>";
+      document.getElementById("topDomainsTable").innerHTML = sortedDomains.map(([domain, count]) => 
+        '<tr><td><a href="https://' + domain + '" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: 500;">' + domain + '</a></td>' +
+        '<td style="text-align: right; font-weight: bold;">' + count + '</td></tr>'
+      ).join('') || "<tr><td colspan='2' style='color: var(--text-muted); text-align: center;'>No browsing recorded</td></tr>";
 
       renderSearches();
       renderFullLog();
@@ -630,16 +618,14 @@
       }
 
       const displayList = showAllSearches ? globalSearches : globalSearches.slice(0, 10);
-      searchQueryTable.innerHTML = displayList.map(log => `
-        <tr>
-          <td style="white-space: nowrap; color: var(--text-muted); font-size: 12px;">${formatTime(log.timestamp)}</td>
-          <td style="font-weight: 600; color: #202124;">"${log.searchQuery}"</td>
-        </tr>
-      `).join('');
+      searchQueryTable.innerHTML = displayList.map(log => 
+        '<tr><td style="white-space: nowrap; color: var(--text-muted); font-size: 12px;">' + formatTime(log.timestamp) + '</td>' +
+        '<td style="font-weight: 600; color: #202124;">"' + log.searchQuery + '"</td></tr>'
+      ).join('');
 
       if (globalSearches.length > 10) {
         searchExpandBar.classList.remove("hidden");
-        toggleBtn.textContent = showAllSearches ? "▲ Show Less" : `▼ Show All ${globalSearches.length} Searches`;
+        toggleBtn.textContent = showAllSearches ? "▲ Show Less" : "▼ Show All " + globalSearches.length + " Searches";
       } else {
         searchExpandBar.classList.add("hidden");
       }
@@ -656,45 +642,29 @@
       }
 
       if (viewMode === "flat") {
-        container.innerHTML = `
-          <table>
-            <thead>
-              <tr>
-                <th style="width: 18%;">Time</th>
-                <th style="width: 22%;">Device</th>
-                <th style="width: 15%;">Status</th>
-                <th style="width: 22%;">Page Title / Query</th>
-                <th style="width: 23%;">URL Path</th>
-              </tr>
-            </thead>
-            <tbody id="fullLogTable">
-              ${logsToRender.map(log => {
-                const isBypassed = (log.title && log.title.includes("[VISITED]")) || (log.url && log.url.includes("virtue_bypass=true"));
-                const statusBadge = isBypassed 
-                  ? `<span class="flag-badge">⚠️ Ignored Warning</span>` 
-                  : `<span style="color: #198754; font-size: 12px; font-weight: 500;">✓ Clear</span>`;
-                const deviceName = log.device || "Desktop";
-                const hasValidSearch = log.searchQuery && log.searchQuery.trim() !== "" && log.searchQuery.trim().toUpperCase() !== "N/A";
-                const searchSubline = hasValidSearch ? `<br><span style="font-size: 11px; color: #1a73e8; font-weight: 600;">🔍 "${log.searchQuery}"</span>` : '';
+        let rowsHtml = logsToRender.map(log => {
+          const isBypassed = (log.title && log.title.includes("[VISITED]")) || (log.url && log.url.includes("virtue_bypass=true"));
+          const statusBadge = isBypassed 
+            ? '<span class="flag-badge">⚠️ Ignored Warning</span>' 
+            : '<span style="color: #198754; font-size: 12px; font-weight: 500;">✓ Clear</span>';
+          const deviceName = log.device || "Desktop";
+          const hasValidSearch = log.searchQuery && log.searchQuery.trim() !== "" && log.searchQuery.trim().toUpperCase() !== "N/A";
+          const searchSubline = hasValidSearch ? '<br><span style="font-size: 11px; color: #1a73e8; font-weight: 600;">🔍 "' + log.searchQuery + '"</span>' : '';
+          const displayTitle = log.title ? log.title : "Untitled";
 
-                return `
-                  <tr style="${isBypassed ? 'background-color: #fffaf9;' : ''}">
-                    <td style="white-space: nowrap; font-size: 12px; color: var(--text-muted);">${formatTime(log.timestamp)}</td>
-                    <td><span class="device-badge">💻 ${deviceName}</span></td>
-                    <td>${statusBadge}</td>
-                    <td>
-                      <div class="text-truncate" style="font-weight: 500;" title="${log.title \vert{}\vert{} 'Untitled'}">${log.title || "Untitled"}</div>
-                      ${searchSubline}
-                    </td>
-                    <td>
-                      <a href="${log.url}" target="_blank" class="text-truncate" style="color: var(--text-muted); text-decoration: none; font-size: 12px;" title="${log.url}">${log.url}</a>
-                    </td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        `;
+          return '<tr style="' + (isBypassed ? 'background-color: #fffaf9;' : '') + '">' +
+            '<td style="white-space: nowrap; font-size: 12px; color: var(--text-muted);">' + formatTime(log.timestamp) + '</td>' +
+            '<td><span class="device-badge">💻 ' + deviceName + '</span></td>' +
+            '<td>' + statusBadge + '</td>' +
+            '<td><div class="text-truncate" style="font-weight: 500;" title="' + displayTitle + '">' + displayTitle + '</div>' + searchSubline + '</td>' +
+            '<td><a href="' + log.url + '" target="_blank" class="text-truncate" style="color: var(--text-muted); text-decoration: none; font-size: 12px;" title="' + log.url + '">' + log.url + '</a></td>' +
+            '</tr>';
+        }).join('');
+
+        container.innerHTML = '<table><thead><tr>' +
+          '<th style="width: 18%;">Time</th><th style="width: 22%;">Device</th><th style="width: 15%;">Status</th>' +
+          '<th style="width: 22%;">Page Title / Query</th><th style="width: 23%;">URL Path</th>' +
+          '</tr></thead><tbody id="fullLogTable">' + rowsHtml + '</tbody></table>';
       } else {
         const groups = {};
         logsToRender.forEach(log => {
@@ -707,22 +677,17 @@
 
         const sortedGroups = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
 
-        container.innerHTML = sortedGroups.map(([domain, items]) => `
-          <details class="domain-group">
-            <summary>
-              <span>🌐 <strong>${domain}</strong></span>
-              <span style="color: var(--text-muted); font-size: 12px;">${items.length} visits</span>
-            </summary>
-            <ul class="domain-sublist">
-              ${items.map(item => `
-                <li>
-                  <span style="color: var(--text-muted); font-size: 11px;">[${formatTime(item.timestamp)}]</span>
-                  <a href="${item.url}" target="_blank" style="color: #1a73e8; text-decoration: none;">${item.title || item.url}</a>
-                </li>
-              `).join('')}
-            </ul>
-          </details>
-        `).join('');
+        container.innerHTML = sortedGroups.map(([domain, items]) => {
+          const listItems = items.map(item => 
+            '<li><span style="color: var(--text-muted); font-size: 11px;">[' + formatTime(item.timestamp) + ']</span> ' +
+            '<a href="' + item.url + '" target="_blank" style="color: #1a73e8; text-decoration: none;">' + (item.title || item.url) + '</a></li>'
+          ).join('');
+
+          return '<details class="domain-group"><summary>' +
+            '<span>🌐 <strong>' + domain + '</strong></span>' +
+            '<span style="color: var(--text-muted); font-size: 12px;">' + items.length + ' visits</span>' +
+            '</summary><ul class="domain-sublist">' + listItems + '</ul></details>';
+        }).join('');
       }
     }
 
@@ -732,16 +697,16 @@
       const startTime = startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       if (!endIso) {
-        return `<strong>${startDay}</strong> │ ${startTime} – <strong>Present (Active Session)</strong>`;
+        return '<strong>' + startDay + '</strong> │ ' + startTime + ' – <strong>Present (Active Session)</strong>';
       }
 
       const endDate = new Date(endIso);
       const endTime = endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const diffMin = Math.round((endDate - startDate) / 60000);
 
-      let durationStr = diffMin < 1 ? "< 1 min" : diffMin < 60 ? `${diffMin} min` : `${(diffMin / 60).toFixed(1)} hr`;
+      let durationStr = diffMin < 1 ? "< 1 min" : diffMin < 60 ? diffMin + " min" : (diffMin / 60).toFixed(1) + " hr";
 
-      return `<strong>${startDay}</strong> │ ${startTime} – ${endTime} (${durationStr})`;
+      return '<strong>' + startDay + '</strong> │ ' + startTime + ' – ' + endTime + ' (' + durationStr + ')';
     }
 
     function processAuditStream(heartbeats, ignoredWarningLogs, userName) {
@@ -782,47 +747,34 @@
         if (unmonitoredWindows.length > 0) {
           hasAuditNotice = true;
           const hasActiveSession = unmonitoredWindows.some(w => w.end === null);
-          const possessiveName = userName && userName !== "User" ? (userName.endsWith('s') ? `${userName}'` : `${userName}'s`) : "the user's";
+          const possessiveName = userName && userName !== "User" ? (userName.endsWith('s') ? userName + "'" : userName + "'s") : "the user's";
 
-          noticeHtml += `
-            <div class="audit-section">
-              <div class="audit-section-title">🕵️ Unmonitored Incognito Sessions (${devName})</div>
-              <ul>
-          `;
+          noticeHtml += '<div class="audit-section"><div class="audit-section-title">🕵️ Unmonitored Incognito Sessions (' + devName + ')</div><ul>';
 
           unmonitoredWindows.forEach(win => {
             const timeRangeText = formatTimeRange(win.start.toISOString(), win.end ? win.end.toISOString() : null);
             if (win.end) {
-              noticeHtml += `<li>${timeRangeText}</li>`;
+              noticeHtml += '<li>' + timeRangeText + '</li>';
             } else {
-              noticeHtml += `<li style="font-weight: bold; color: #b45309;">🚨 ${timeRangeText}</li>`;
+              noticeHtml += '<li style="font-weight: bold; color: #b45309;">🚨 ' + timeRangeText + '</li>';
             }
           });
 
-          noticeHtml += `</ul>`;
+          noticeHtml += '</ul>';
 
           if (hasActiveSession) {
-            noticeHtml += `
-              <div class="fix-box">
-                <strong>🛠️ How to Fix Active Gaps:</strong> On ${possessiveName} computer, open <code>chrome://extensions</code> ➔ click <strong>Details</strong> on Virtue ➔ turn ON <strong>"Allow in Incognito"</strong>.
-              </div>
-            `;
+            noticeHtml += '<div class="fix-box"><strong>🛠️ How to Fix Active Gaps:</strong> On ' + possessiveName + ' computer, open <code>chrome://extensions</code> ➔ click <strong>Details</strong> on Virtue ➔ turn ON <strong>"Allow in Incognito"</strong>.</div>';
           }
 
-          noticeHtml += `<div class="audit-notice-footer">These gaps may indicate unmonitored browsing periods.</div>`;
-          noticeHtml += `</div>`;
+          noticeHtml += '<div class="audit-notice-footer">These gaps may indicate unmonitored browsing periods.</div></div>';
         }
       });
 
       if (ignoredWarningLogs.length > 0) {
         hasAuditNotice = true;
-        const overrideCountText = ignoredWarningLogs.length === 1 ? "1 Override" : `${ignoredWarningLogs.length} Overrides`;
+        const overrideCountText = ignoredWarningLogs.length === 1 ? "1 Override" : ignoredWarningLogs.length + " Overrides";
 
-        noticeHtml += `
-          <div class="audit-section">
-            <div class="audit-section-title">🛑 Restricted Sites Visited (${overrideCountText})</div>
-            <ul>
-        `;
+        noticeHtml += '<div class="audit-section"><div class="audit-section-title">🛑 Restricted Sites Visited (' + overrideCountText + ')</div><ul>';
 
         ignoredWarningLogs.forEach(log => {
           const logDate = new Date(log.timestamp);
@@ -830,25 +782,18 @@
           const timeStr = logDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const title = log.title ? log.title.replace("[VISITED]", "").trim() : "Untitled";
 
-          noticeHtml += `
-            <li>
-              <strong>${dateStr}, ${timeStr}</strong> │ <em>"${title}"</em><br>
-              <a href="${log.url}" target="_blank" style="font-size: 11px;">${log.url}</a>
-            </li>
-          `;
+          noticeHtml += '<li><strong>' + dateStr + ', ' + timeStr + '</strong> │ <em>"' + title + '"</em><br>' +
+            '<a href="' + log.url + '" target="_blank" style="font-size: 11px;">' + log.url + '</a></li>';
         });
 
-        noticeHtml += `</ul></div>`;
+        noticeHtml += '</ul></div>';
       }
 
       const noticeContainer = document.getElementById("auditNoticeContainer");
 
       if (hasAuditNotice) {
         noticeContainer.className = "audit-notice";
-        noticeContainer.innerHTML = `
-          <h4>Attention Required</h4>
-          ${noticeHtml}
-        `;
+        noticeContainer.innerHTML = '<h4>Attention Required</h4>' + noticeHtml;
       } else {
         noticeContainer.className = "hidden";
       }
