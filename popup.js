@@ -1,3 +1,5 @@
+import { generatePinVerifier, verifyPinHash } from './cryptoUtils.js';
+
 document.addEventListener("DOMContentLoaded", () => {
   // Screens
   const setupScreen = document.getElementById("setupScreen");
@@ -66,8 +68,26 @@ document.addEventListener("DOMContentLoaded", () => {
   let activeUserEmail = null;
   let discoveredVaultFileId = null;
   let discoveredProfile = null;
+  let isAuthenticating = false;
 
   const GITHUB_DASHBOARD_BASE_URL = "https://tbehman.github.io/virtue-extension/";
+  
+  // Google OAuth Configuration
+  const GOOGLE_CLIENT_ID = "369511086314-8queep6f1a9ki2n2jsvtajv1i3iekcrp.apps.googleusercontent.com";
+  const OAUTH_SCOPES = [
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/userinfo.email"
+  ];
+
+  function toggleHidden(element, isHidden) {
+    if (!element) return;
+    if (isHidden) {
+      element.classList.add("hidden");
+    } else {
+      element.classList.remove("hidden");
+    }
+  }
 
   // ==========================================
   // 1. INITIALIZATION ENGINE
@@ -83,48 +103,47 @@ document.addEventListener("DOMContentLoaded", () => {
       "filterMode",
       "driveFileId"
     ], (data) => {
-      cachedPin = data.userPin || "";
-      activeFilterMode = data.filterMode || "blocklist";
+      const storageData = data || {};
+      cachedPin = storageData.userPin || "";
+      activeFilterMode = storageData.filterMode || "blocklist";
 
-      if (!data.authToken || !cachedPin) {
-        setupScreen.classList.remove("hidden");
-        dashboardScreen.classList.add("hidden");
-        settingsScreen.classList.add("hidden");
+      // FIXED: Check userPin AND driveFileId to determine setup state.
+      // Do NOT rely solely on authToken, which expires every 60 mins.
+      const isConfigured = Boolean(storageData.userPin && storageData.driveFileId);
+
+      if (!isConfigured) {
+        toggleHidden(setupScreen, false);
+        toggleHidden(dashboardScreen, true);
+        toggleHidden(settingsScreen, true);
         
-        authStepContainer.classList.remove("hidden");
-        profileFormFields.classList.add("hidden");
-        existingVaultNotice.classList.add("hidden");
+        toggleHidden(authStepContainer, false);
+        toggleHidden(profileFormFields, true);
+        toggleHidden(existingVaultNotice, true);
       } else {
-        setupScreen.classList.add("hidden");
-        dashboardScreen.classList.remove("hidden");
-        settingsScreen.classList.add("hidden");
-        pinPromptArea.classList.add("hidden");
+        toggleHidden(setupScreen, true);
+        toggleHidden(dashboardScreen, false);
+        toggleHidden(settingsScreen, true);
+        toggleHidden(pinPromptArea, true);
         
-        // Resolve Connected Account Email
         if (accountDisplay) {
-          if (data.userEmail && data.userEmail.trim() !== "") {
-            accountDisplay.textContent = data.userEmail.trim();
+          if (storageData.userEmail && storageData.userEmail.trim() !== "") {
+            accountDisplay.textContent = storageData.userEmail.trim();
           } else {
-            accountDisplay.textContent = "Loading...";
-            fetchGoogleUserEmail(data.authToken, (email) => {
-              accountDisplay.textContent = email || "Connected";
-            });
+            accountDisplay.textContent = "Connected";
           }
         }
 
-        // Resolve Partner Email Display
         if (partnerDisplayEmail) {
-          partnerDisplayEmail.textContent = (data.partnerEmail && data.partnerEmail.trim() !== "") 
-            ? data.partnerEmail.trim() 
+          partnerDisplayEmail.textContent = (storageData.partnerEmail && storageData.partnerEmail.trim() !== "") 
+            ? storageData.partnerEmail.trim() 
             : "Not Set";
         }
           
-        // Resolve Web Dashboard Button Link with Dynamic Encryption Key Injection
-        if (data.driveFileId && viewSheetLink) {
-          const pin = data.userPin || "1234";
-          const email = data.userEmail || "user@virtue.app";
+        if (storageData.driveFileId && viewSheetLink) {
+          const pin = (storageData.userPin || "1234").trim();
+          const email = (storageData.userEmail || "user@virtue.app").toLowerCase().trim();
 
-          viewSheetLink.href = `${GITHUB_DASHBOARD_BASE_URL}?fileId=${data.driveFileId}`;
+          viewSheetLink.href = `${GITHUB_DASHBOARD_BASE_URL}?fileId=${storageData.driveFileId}`;
 
           viewSheetLink.onclick = async (e) => {
             e.preventDefault();
@@ -140,7 +159,7 @@ document.addEventListener("DOMContentLoaded", () => {
               const derivedKey = await crypto.subtle.deriveKey(
                 {
                   name: "PBKDF2",
-                  salt: enc.encode(email.toLowerCase().trim()),
+                  salt: enc.encode(email),
                   iterations: 100000,
                   hash: "SHA-256"
                 },
@@ -154,9 +173,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 .map(b => b.toString(16).padStart(2, "0"))
                 .join("");
 
-              window.open(`${GITHUB_DASHBOARD_BASE_URL}?fileId=${data.driveFileId}#key=${keyHex}`, "_blank");
+              window.open(`${GITHUB_DASHBOARD_BASE_URL}?fileId=${storageData.driveFileId}#key=${keyHex}`, "_blank");
             } catch (err) {
-              window.open(`${GITHUB_DASHBOARD_BASE_URL}?fileId=${data.driveFileId}`, "_blank");
+              window.open(`${GITHUB_DASHBOARD_BASE_URL}?fileId=${storageData.driveFileId}`, "_blank");
             }
           };
         }
@@ -171,7 +190,7 @@ document.addEventListener("DOMContentLoaded", () => {
     })
     .then(res => res.json())
     .then(profile => {
-      const email = profile.email || "";
+      const email = (profile && profile.email) ? profile.email.toLowerCase().trim() : "";
       if (email) {
         activeUserEmail = email;
         chrome.storage.local.set({ userEmail: email });
@@ -185,7 +204,7 @@ document.addEventListener("DOMContentLoaded", () => {
     refreshAccountBtn.addEventListener("click", () => {
       if (accountDisplay) accountDisplay.textContent = "Loading...";
       chrome.storage.local.get(["authToken"], (data) => {
-        if (data.authToken) {
+        if (data && data.authToken) {
           fetchGoogleUserEmail(data.authToken, (email) => {
             if (accountDisplay) accountDisplay.textContent = email || "Connected";
           });
@@ -194,7 +213,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Deep link to Chrome Extension options page for Incognito permission
   if (openExtensionSettingsBtn) {
     openExtensionSettingsBtn.addEventListener("click", () => {
       chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
@@ -202,56 +220,89 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ==========================================
-  // 2. STEP 1: GOOGLE CONNECT & VAULT DISCOVERY
+  // 2. GOOGLE AUTHENTICATION & VAULT DISCOVERY
   // ==========================================
-  authGoogleBtn.addEventListener("click", () => {
-    status.style.color = "#4285F4";
-    status.textContent = "Authenticating Google Account...";
-    authGoogleBtn.disabled = true;
+  if (authGoogleBtn) {
+    authGoogleBtn.addEventListener("click", () => {
+      if (isAuthenticating) return;
+      isAuthenticating = true;
 
-    chrome.identity.getAuthToken({ interactive: true }, (token) => {
-      if (chrome.runtime.lastError || !token) {
-        status.style.color = "#d93025";
-        status.textContent = "Connection failed: " + (chrome.runtime.lastError?.message || "No response");
-        authGoogleBtn.disabled = false;
-        return;
+      if (status) {
+        status.style.color = "#4285F4";
+        status.textContent = "Authenticating Google Account...";
       }
+      authGoogleBtn.disabled = true;
 
-      activeAuthToken = token;
-      status.textContent = "Retrieving profile details...";
+      const redirectUri = chrome.identity.getRedirectURL();
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}&` +
+        `response_type=token&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `scope=${encodeURIComponent(OAUTH_SCOPES.join(" "))}`;
 
-      fetchGoogleUserEmail(token, (fetchedEmail) => {
-        activeUserEmail = fetchedEmail;
-        status.textContent = "Checking Google Drive for existing Virtue vault...";
-        
-        inspectDriveForVault(token, (vaultFound, fileData, fileId) => {
-          authStepContainer.classList.add("hidden");
-          profileFormFields.classList.remove("hidden");
-          status.textContent = "";
+      chrome.identity.launchWebAuthFlow({ url: authUrl, interactive: true }, (redirectUrl) => {
+        isAuthenticating = false;
 
-          if (vaultFound && fileData && fileData.metadata) {
-            discoveredVaultFileId = fileId;
-            discoveredProfile = fileData.metadata;
-
-            userNameGroup.classList.add("hidden");
-            partnerNameGroup.classList.add("hidden");
-            partnerEmailGroup.classList.add("hidden");
-
-            const userFirstName = discoveredProfile.userName ? discoveredProfile.userName.split(" ")[0] : "User";
-            existingVaultText.textContent = `👋 Welcome back, ${userFirstName}! Linked vault found for partner: ${discoveredProfile.partnerEmail || "Set"}`;
-            existingVaultNotice.classList.remove("hidden");
-            pinLabelText.textContent = "Enter your 4-Digit Master PIN to authorize this device:";
-          } else {
-            existingVaultNotice.classList.add("hidden");
-            userNameGroup.classList.remove("hidden");
-            partnerNameGroup.classList.remove("hidden");
-            partnerEmailGroup.classList.remove("hidden");
-            pinLabelText.textContent = "Create a 4-Digit Master PIN:";
+        if (chrome.runtime.lastError || !redirectUrl) {
+          if (status) {
+            status.style.color = "#d93025";
+            status.textContent = "Connection failed: " + (chrome.runtime.lastError?.message || "User canceled authentication");
           }
+          authGoogleBtn.disabled = false;
+          return;
+        }
+
+        const matches = redirectUrl.match(/access_token=([^&]+)/);
+        const token = matches ? matches[1] : null;
+
+        if (!token) {
+          if (status) {
+            status.style.color = "#d93025";
+            status.textContent = "Authentication failed: Invalid OAuth token returned";
+          }
+          authGoogleBtn.disabled = false;
+          return;
+        }
+
+        activeAuthToken = token;
+        chrome.storage.local.set({ authToken: token });
+        if (status) status.textContent = "Retrieving profile details...";
+
+        fetchGoogleUserEmail(token, (fetchedEmail) => {
+          activeUserEmail = fetchedEmail;
+          if (status) status.textContent = "Checking Google Drive for existing Virtue vault...";
+          
+          inspectDriveForVault(token, (vaultFound, fileData, fileId) => {
+            toggleHidden(authStepContainer, true);
+            toggleHidden(profileFormFields, false);
+            if (status) status.textContent = "";
+
+            if (vaultFound && fileData && fileData.metadata) {
+              discoveredVaultFileId = fileId;
+              discoveredProfile = fileData.metadata;
+
+              toggleHidden(userNameGroup, true);
+              toggleHidden(partnerNameGroup, true);
+              toggleHidden(partnerEmailGroup, true);
+
+              const userFirstName = discoveredProfile.userName ? discoveredProfile.userName.split(" ")[0] : "User";
+              if (existingVaultText) {
+                existingVaultText.textContent = `👋 Welcome back, ${userFirstName}! Linked vault found for partner: ${discoveredProfile.partnerEmail || "Set"}`;
+              }
+              toggleHidden(existingVaultNotice, false);
+              if (pinLabelText) pinLabelText.textContent = "Enter your 4-Digit Master PIN to authorize this device:";
+            } else {
+              toggleHidden(existingVaultNotice, true);
+              toggleHidden(userNameGroup, false);
+              toggleHidden(partnerNameGroup, false);
+              toggleHidden(partnerEmailGroup, false);
+              if (pinLabelText) pinLabelText.textContent = "Create a 4-Digit Master PIN:";
+            }
+          });
         });
       });
     });
-  });
+  }
 
   function inspectDriveForVault(token, callback) {
     const query = encodeURIComponent("name = 'virtue_logs.json' and trashed = false");
@@ -261,7 +312,7 @@ document.addEventListener("DOMContentLoaded", () => {
     })
     .then(res => res.json())
     .then(data => {
-      if (data.files && data.files.length > 0) {
+      if (data && data.files && data.files.length > 0) {
         const fileId = data.files[0].id;
         fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
           headers: { "Authorization": `Bearer ${token}` }
@@ -279,68 +330,105 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   // 3. STEP 2: COMPLETE SETUP & PROVISION
   // ==========================================
-  completeSetupBtn.addEventListener("click", () => {
-    const pin = masterPinInput.value.trim();
+  if (completeSetupBtn) {
+    completeSetupBtn.addEventListener("click", async () => {
+      const pin = masterPinInput ? masterPinInput.value.trim() : "";
 
-    if (!/^\d{4}$/.test(pin)) {
-      status.style.color = "#d93025";
-      status.textContent = "PIN must be exactly 4 digits.";
-      return;
-    }
-
-    status.style.color = "#4285F4";
-
-    if (discoveredProfile) {
-      status.textContent = "Authorizing device...";
-      const storagePayload = {
-        authToken: activeAuthToken,
-        userEmail: activeUserEmail || discoveredProfile.userEmail || "",
-        driveFileId: discoveredVaultFileId,
-        userName: discoveredProfile.userName || "",
-        partnerName: discoveredProfile.partnerName || "",
-        partnerEmail: discoveredProfile.partnerEmail || "",
-        userPin: pin,
-        filterMode: "blocklist"
-      };
-
-      chrome.storage.local.set(storagePayload, () => init());
-    } else {
-      const email = partnerEmailInput.value.trim();
-      const userName = userNameInput.value.trim();
-      const partnerName = partnerNameInput.value.trim();
-
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        status.style.color = "#d93025";
-        status.textContent = "Please enter a valid partner email address.";
+      if (!/^\d{4}$/.test(pin)) {
+        if (status) {
+          status.style.color = "#d93025";
+          status.textContent = "PIN must be exactly 4 digits.";
+        }
         return;
       }
 
-      status.textContent = "Creating secure Google Drive vault...";
+      if (discoveredProfile) {
+        if (status) {
+          status.style.color = "#4285F4";
+          status.textContent = "Verifying Master PIN...";
+        }
 
-      const profilePayload = { 
-        userEmail: activeUserEmail || "", 
-        userName, 
-        partnerName, 
-        partnerEmail: email 
-      };
+        const storedEmail = activeUserEmail || discoveredProfile.userEmail || "";
+        const storedVerifier = discoveredProfile.pinVerifier || null;
 
-      createNewDriveVault(activeAuthToken, profilePayload, (newFileId) => {
+        // Verify PIN against vault verifier hash
+        const isValidPin = await verifyPinHash(pin, storedEmail, storedVerifier);
+
+        if (!isValidPin) {
+          if (status) {
+            status.style.color = "#d93025";
+            status.innerHTML = `❌ PIN incorrect for this vault.<br><a href="#" id="inlineForgotPin" style="color:#d93025; font-weight:bold;">Forgot PIN? Send Email Recovery</a>`;
+            
+            const inlineBtn = document.getElementById("inlineForgotPin");
+            if (inlineBtn) {
+              inlineBtn.onclick = (e) => {
+                e.preventDefault();
+                triggerPinRecovery();
+              };
+            }
+          }
+          return;
+        }
+
+        if (status) status.textContent = "Authorizing device...";
         const storagePayload = {
           authToken: activeAuthToken,
-          userEmail: activeUserEmail || "",
-          driveFileId: newFileId,
-          userName,
-          partnerName,
-          partnerEmail: email,
+          userEmail: storedEmail,
+          driveFileId: discoveredVaultFileId,
+          userName: discoveredProfile.userName || "",
+          partnerName: discoveredProfile.partnerName || "",
+          partnerEmail: discoveredProfile.partnerEmail || "",
           userPin: pin,
           filterMode: "blocklist"
         };
 
         chrome.storage.local.set(storagePayload, () => init());
-      });
-    }
-  });
+      } else {
+        const email = partnerEmailInput ? partnerEmailInput.value.trim() : "";
+        const userName = userNameInput ? userNameInput.value.trim() : "";
+        const partnerName = partnerNameInput ? partnerNameInput.value.trim() : "";
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          if (status) {
+            status.style.color = "#d93025";
+            status.textContent = "Please enter a valid partner email address.";
+          }
+          return;
+        }
+
+        if (status) {
+          status.style.color = "#4285F4";
+          status.textContent = "Creating secure Google Drive vault...";
+        }
+
+        const pinVerifier = await generatePinVerifier(pin, activeUserEmail || "");
+
+        const profilePayload = { 
+          userEmail: activeUserEmail || "", 
+          userName, 
+          partnerName, 
+          partnerEmail: email,
+          pinVerifier
+        };
+
+        createNewDriveVault(activeAuthToken, profilePayload, (newFileId) => {
+          const storagePayload = {
+            authToken: activeAuthToken,
+            userEmail: activeUserEmail || "",
+            driveFileId: newFileId,
+            userName,
+            partnerName,
+            partnerEmail: email,
+            userPin: pin,
+            filterMode: "blocklist"
+          };
+
+          chrome.storage.local.set(storagePayload, () => init());
+        });
+      }
+    });
+  }
 
   function createNewDriveVault(token, profile, callback) {
     const metadata = { name: "virtue_logs.json", mimeType: "application/json" };
@@ -351,6 +439,7 @@ document.addEventListener("DOMContentLoaded", () => {
         userName: profile.userName || "",
         partnerName: profile.partnerName || "",
         partnerEmail: profile.partnerEmail || "",
+        pinVerifier: profile.pinVerifier || "",
         filterMode: "blocklist",
         customBlacklist: [],
         customWhitelist: []
@@ -374,95 +463,116 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   // 4. SETTINGS NAVIGATION & PROFILE EDITING
   // ==========================================
-  openSettingsBtn.addEventListener("click", () => {
-    if (isUnlocked) {
-      showSettingsScreen();
-    } else {
-      pinPromptArea.classList.remove("hidden");
-      verifyPinInput.value = "";
-      verifyPinInput.focus();
-    }
-  });
+  if (openSettingsBtn) {
+    openSettingsBtn.addEventListener("click", () => {
+      if (isUnlocked) {
+        showSettingsScreen();
+      } else {
+        toggleHidden(pinPromptArea, false);
+        if (verifyPinInput) {
+          verifyPinInput.value = "";
+          verifyPinInput.focus();
+        }
+      }
+    });
+  }
 
-  cancelPinBtn.addEventListener("click", () => pinPromptArea.classList.add("hidden"));
+  if (cancelPinBtn) {
+    cancelPinBtn.addEventListener("click", () => toggleHidden(pinPromptArea, true));
+  }
 
-  submitPinBtn.addEventListener("click", () => {
-    if (verifyPinInput.value.trim() === cachedPin) {
-      isUnlocked = true;
-      pinPromptArea.classList.add("hidden");
-      showSettingsScreen();
-    } else {
-      alert("Incorrect 4-Digit PIN.");
-    }
-  });
+  if (submitPinBtn) {
+    submitPinBtn.addEventListener("click", () => {
+      const pinVal = verifyPinInput ? verifyPinInput.value.trim() : "";
+      if (pinVal === cachedPin) {
+        isUnlocked = true;
+        toggleHidden(pinPromptArea, true);
+        showSettingsScreen();
+      } else {
+        alert("Incorrect 4-Digit PIN.");
+      }
+    });
+  }
 
-  backToDashboardBtn.addEventListener("click", () => {
-    settingsScreen.classList.add("hidden");
-    dashboardScreen.classList.remove("hidden");
-    init();
-  });
+  if (backToDashboardBtn) {
+    backToDashboardBtn.addEventListener("click", () => {
+      toggleHidden(settingsScreen, true);
+      toggleHidden(dashboardScreen, false);
+      init();
+    });
+  }
 
   function showSettingsScreen() {
-    dashboardScreen.classList.add("hidden");
-    settingsScreen.classList.remove("hidden");
+    toggleHidden(dashboardScreen, true);
+    toggleHidden(settingsScreen, false);
 
     chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "userEmail"], (data) => {
-      editUserNameInput.value = data.userName || "";
-      editPartnerNameInput.value = data.partnerName || "";
-      editPartnerEmailInput.value = data.partnerEmail || "";
+      const stored = data || {};
+      if (editUserNameInput) editUserNameInput.value = stored.userName || "";
+      if (editPartnerNameInput) editPartnerNameInput.value = stored.partnerName || "";
+      if (editPartnerEmailInput) editPartnerEmailInput.value = stored.partnerEmail || "";
 
-      if (settingsUserEmail) settingsUserEmail.textContent = data.userEmail || "Connected Google Account";
+      if (settingsUserEmail) settingsUserEmail.textContent = stored.userEmail || "Connected Google Account";
     });
 
     updateFilterModeUI();
     loadDomainList();
   }
 
-  saveProfileBtn.addEventListener("click", () => {
-    const newUserName = editUserNameInput.value.trim();
-    const newPartnerName = editPartnerNameInput.value.trim();
-    const newPartnerEmail = editPartnerEmailInput.value.trim();
+  if (saveProfileBtn) {
+    saveProfileBtn.addEventListener("click", () => {
+      const newUserName = editUserNameInput ? editUserNameInput.value.trim() : "";
+      const newPartnerName = editPartnerNameInput ? editPartnerNameInput.value.trim() : "";
+      const newPartnerEmail = editPartnerEmailInput ? editPartnerEmailInput.value.trim() : "";
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(newPartnerEmail)) {
-      profileStatusText.style.color = "#d93025";
-      profileStatusText.textContent = "Please enter a valid partner email.";
-      profileStatusText.style.display = "block";
-      return;
-    }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(newPartnerEmail)) {
+        if (profileStatusText) {
+          profileStatusText.style.color = "#d93025";
+          profileStatusText.textContent = "Please enter a valid partner email.";
+          profileStatusText.style.display = "block";
+        }
+        return;
+      }
 
-    profileStatusText.style.color = "#1a73e8";
-    profileStatusText.textContent = "Saving profile changes...";
-    profileStatusText.style.display = "block";
+      if (profileStatusText) {
+        profileStatusText.style.color = "#1a73e8";
+        profileStatusText.textContent = "Saving profile changes...";
+        profileStatusText.style.display = "block";
+      }
 
-    chrome.storage.local.get(["partnerEmail", "userName", "userEmail", "authToken", "driveFileId"], (currentData) => {
-      const oldPartnerEmail = currentData.partnerEmail;
-      const isEmailChanged = oldPartnerEmail && oldPartnerEmail.toLowerCase() !== newPartnerEmail.toLowerCase();
+      chrome.storage.local.get(["partnerEmail", "userName", "userEmail", "authToken", "driveFileId"], (currentData) => {
+        const stored = currentData || {};
+        const oldPartnerEmail = stored.partnerEmail;
+        const isEmailChanged = oldPartnerEmail && oldPartnerEmail.toLowerCase() !== newPartnerEmail.toLowerCase();
 
-      const updatedPayload = {
-        userName: newUserName,
-        partnerName: newPartnerName,
-        partnerEmail: newPartnerEmail,
-        userEmail: currentData.userEmail || ""
-      };
+        const updatedPayload = {
+          userName: newUserName,
+          partnerName: newPartnerName,
+          partnerEmail: newPartnerEmail,
+          userEmail: stored.userEmail || ""
+        };
 
-      chrome.storage.local.set(updatedPayload, () => {
-        syncMetadataToDrive(currentData.authToken, currentData.driveFileId, updatedPayload, () => {
-          if (isEmailChanged) {
-            profileStatusText.style.color = "#129eaf";
-            profileStatusText.textContent = "Profile saved! Courtesy alert sent to former partner.";
-          } else {
-            profileStatusText.style.color = "#188038";
-            profileStatusText.textContent = "Profile saved successfully!";
-          }
+        chrome.storage.local.set(updatedPayload, () => {
+          syncMetadataToDrive(stored.authToken, stored.driveFileId, updatedPayload, () => {
+            if (profileStatusText) {
+              if (isEmailChanged) {
+                profileStatusText.style.color = "#129eaf";
+                profileStatusText.textContent = "Profile saved! Courtesy alert sent to former partner.";
+              } else {
+                profileStatusText.style.color = "#188038";
+                profileStatusText.textContent = "Profile saved successfully!";
+              }
 
-          setTimeout(() => {
-            profileStatusText.style.display = "none";
-          }, 3500);
+              setTimeout(() => {
+                profileStatusText.style.display = "none";
+              }, 3500);
+            }
+          });
         });
       });
     });
-  });
+  }
 
   function syncMetadataToDrive(token, fileId, newMetadata, callback) {
     if (!token || !fileId) return callback();
@@ -473,7 +583,7 @@ document.addEventListener("DOMContentLoaded", () => {
     .then(res => res.json())
     .then(fullContent => {
       fullContent.metadata = {
-        ...fullContent.metadata,
+        ...(fullContent.metadata || {}),
         userEmail: newMetadata.userEmail,
         userName: newMetadata.userName,
         partnerName: newMetadata.partnerName,
@@ -500,13 +610,13 @@ document.addEventListener("DOMContentLoaded", () => {
   if (forgotPinLink) {
     forgotPinLink.addEventListener("click", (e) => {
       e.preventDefault();
-      if (forgotPinModal) forgotPinModal.classList.remove("hidden");
+      toggleHidden(forgotPinModal, false);
     });
   }
 
   if (closeForgotPinBtn) {
     closeForgotPinBtn.addEventListener("click", () => {
-      if (forgotPinModal) forgotPinModal.classList.add("hidden");
+      toggleHidden(forgotPinModal, true);
     });
   }
 
@@ -514,7 +624,7 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.runtime.sendMessage({ type: "RECOVER_USER_PIN" }, (response) => {
       if (response && response.success) {
         alert("🔑 PIN recovery email sent! Check your primary Google Account inbox.");
-        if (forgotPinModal) forgotPinModal.classList.add("hidden");
+        toggleHidden(forgotPinModal, true);
       } else {
         alert("Unable to dispatch recovery email. Please check your internet connection.");
       }
@@ -530,40 +640,45 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   function updateFilterModeUI() {
     if (activeFilterMode === "whitelist") {
-      modeWhitelistBtn.classList.add("active");
-      modeBlocklistBtn.classList.remove("active");
-      domainSectionTitle.textContent = "🏰 CUSTOM WHITELIST";
-      domainSectionSubtext.textContent = "All websites blocked EXCEPT explicitly added domains.";
-      domainInput.placeholder = "e.g., wikipedia.org";
+      if (modeWhitelistBtn) modeWhitelistBtn.classList.add("active");
+      if (modeBlocklistBtn) modeBlocklistBtn.classList.remove("active");
+      if (domainSectionTitle) domainSectionTitle.textContent = "🏰 CUSTOM WHITELIST";
+      if (domainSectionSubtext) domainSectionSubtext.textContent = "All websites blocked EXCEPT explicitly added domains.";
+      if (domainInput) domainInput.placeholder = "e.g., wikipedia.org";
     } else {
-      modeBlocklistBtn.classList.add("active");
-      modeWhitelistBtn.classList.remove("active");
-      domainSectionTitle.textContent = "🚫 CUSTOM BLOCKLIST";
-      domainSectionSubtext.textContent = "Explicitly listed domains will be intercepted.";
-      domainInput.placeholder = "e.g., website.com";
+      if (modeBlocklistBtn) modeBlocklistBtn.classList.add("active");
+      if (modeWhitelistBtn) modeWhitelistBtn.classList.remove("active");
+      if (domainSectionTitle) domainSectionTitle.textContent = "🚫 CUSTOM BLOCKLIST";
+      if (domainSectionSubtext) domainSectionSubtext.textContent = "Explicitly listed domains will be intercepted.";
+      if (domainInput) domainInput.placeholder = "e.g., website.com";
     }
   }
 
-  modeBlocklistBtn.addEventListener("click", () => {
-    activeFilterMode = "blocklist";
-    chrome.storage.local.set({ filterMode: "blocklist" }, () => {
-      updateFilterModeUI();
-      loadDomainList();
+  if (modeBlocklistBtn) {
+    modeBlocklistBtn.addEventListener("click", () => {
+      activeFilterMode = "blocklist";
+      chrome.storage.local.set({ filterMode: "blocklist" }, () => {
+        updateFilterModeUI();
+        loadDomainList();
+      });
     });
-  });
+  }
 
-  modeWhitelistBtn.addEventListener("click", () => {
-    activeFilterMode = "whitelist";
-    chrome.storage.local.set({ filterMode: "whitelist" }, () => {
-      updateFilterModeUI();
-      loadDomainList();
+  if (modeWhitelistBtn) {
+    modeWhitelistBtn.addEventListener("click", () => {
+      activeFilterMode = "whitelist";
+      chrome.storage.local.set({ filterMode: "whitelist" }, () => {
+        updateFilterModeUI();
+        loadDomainList();
+      });
     });
-  });
+  }
 
   function loadDomainList() {
+    if (!domainView) return;
     const storageKey = activeFilterMode === "whitelist" ? "customWhitelist" : "customBlacklist";
     chrome.storage.local.get({ [storageKey]: [] }, (result) => {
-      const currentList = result[storageKey] || [];
+      const currentList = (result && result[storageKey]) ? result[storageKey] : [];
       domainView.innerHTML = "";
       
       if (currentList.length === 0) {
@@ -589,12 +704,13 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function addDomain() {
+    if (!domainInput) return;
     const rawInput = domainInput.value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     if (!rawInput) return;
     const storageKey = activeFilterMode === "whitelist" ? "customWhitelist" : "customBlacklist";
 
     chrome.storage.local.get({ [storageKey]: [] }, (result) => {
-      const currentList = result[storageKey] || [];
+      const currentList = (result && result[storageKey]) ? result[storageKey] : [];
       if (!currentList.includes(rawInput)) {
         currentList.push(rawInput);
         chrome.storage.local.set({ [storageKey]: currentList }, () => {
@@ -607,12 +723,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function removeDomain(domainToRemove, storageKey) {
     chrome.storage.local.get({ [storageKey]: [] }, (result) => {
-      const updatedList = (result[storageKey] || []).filter(d => d !== domainToRemove);
+      const updatedList = ((result && result[storageKey]) ? result[storageKey] : []).filter(d => d !== domainToRemove);
       chrome.storage.local.set({ [storageKey]: updatedList }, () => loadDomainList());
     });
   }
 
-  addDomainBtn.addEventListener("click", addDomain);
+  if (addDomainBtn) {
+    addDomainBtn.addEventListener("click", addDomain);
+  }
 
   init();
 });
