@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Virtue | Accountability Dashboard</title>
+  <title>Virtue | Accountability Report</title>
   
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Google Identity Services Library -->
@@ -267,25 +267,25 @@
 <body>
 
   <div class="container">
-    <header>
+    header>
       <div>
         <h1>
           <img src="virtue_logo.png" alt="Virtue Logo" style="height: 53px; width: auto; object-fit: contain;">
           <span>Virtue Dashboard</span>
         </h1>
-        <p id="dashboardSubheader">Accountability Telemetry Report</p>
+        <p id="dashboardSubheader">Accountability Report</p>
       </div>
     </header>
 
     <div id="loadingState">
-      <h2>Accountability Telemetry Report</h2>
-      <p style="color: var(--text-muted);" id="statusSubtext">Sign in with your Google account to view and decrypt shared logs.</p>
+      <h2>Accountability Report</h2>
+      <p style="color: var(--text-muted);" id="statusSubtext">Connecting to Google Drive...</p>
       
-      <div id="spinnerContainer" class="hidden">
+      <div id="spinnerContainer">
         <div class="spinner"></div>
       </div>
 
-      <div id="authActions">
+      <div id="authActions" class="hidden">
         <button id="googleSignInBtn" style="background-color: #198754; color: white; border: none; padding: 12px 24px; font-size: 15px; font-weight: bold; border-radius: 8px; cursor: pointer; margin-top: 10px; transition: opacity 0.2s;">
           🔑 Sign In with Google
         </button>
@@ -468,7 +468,7 @@
     }
 
     function resetAuthUI() {
-      document.getElementById("statusSubtext").textContent = "Sign in with your Google account to view and decrypt shared logs.";
+      document.getElementById("statusSubtext").textContent = "Sign in with your Google account to view shared logs.";
       document.getElementById("spinnerContainer").classList.add("hidden");
       document.getElementById("authActions").classList.remove("hidden");
     }
@@ -485,7 +485,7 @@
       const tokenExpiry = sessionStorage.getItem("virtue_gis_expiry");
 
       if (savedToken && tokenExpiry && Date.now() < parseInt(tokenExpiry, 10)) {
-        showLoadingProgress("Loading cached session...");
+        showLoadingProgress("Loading session...");
         accessToken = savedToken;
         fetchLogsDirect(fileId, keyHex);
         return;
@@ -515,15 +515,12 @@
         },
       });
 
-      // Helper to handle window focus after opening popup
+      // Helper to trigger popup with focus listener
       const triggerAuthWithFocusCheck = (promptMode) => {
-        showLoadingProgress("Authenticating with Google...");
+        showLoadingProgress("Opening Google Sign-In...");
         
-        // Listen for tab focus regaining after user closes or completes popup
         const handleFocus = () => {
           window.removeEventListener("focus", handleFocus);
-          
-          // Give callback 1 second to fire if auth succeeded; otherwise reset button
           setTimeout(() => {
             if (!accessToken) {
               resetAuthUI();
@@ -535,12 +532,11 @@
         tokenClient.requestAccessToken({ prompt: promptMode });
       };
 
-      // Primary sign-in button handler
+      // Button handlers
       document.getElementById("googleSignInBtn").onclick = () => {
         triggerAuthWithFocusCheck('');
       };
 
-      // Switch Account button handler
       document.getElementById("switchAccountBtn").onclick = (e) => {
         e.preventDefault();
         sessionStorage.removeItem("virtue_gis_token");
@@ -548,8 +544,8 @@
         triggerAuthWithFocusCheck('select_account');
       };
 
-      // Initial page load state
-      resetAuthUI();
+      // AUTO-TRIGGER GOOGLE POPUP IMMEDIATELY ON LINK OPEN
+      triggerAuthWithFocusCheck('');
     }
 
     document.addEventListener("DOMContentLoaded", () => {
