@@ -6,7 +6,7 @@
   <title>Virtue | Accountability Dashboard</title>
   
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Google Identity Services Library (Synchronous Load) -->
+  <!-- Google Identity Services Library -->
   <script src="https://accounts.google.com/gsi/client"></script>
 
   <style>
@@ -163,11 +163,26 @@
     }
 
     #loadingState, #errorState {
-      text-align: center; padding: 50px; background: var(--card-bg);
+      text-align: center; padding: 50px 20px; background: var(--card-bg);
       border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-top: 20px;
     }
     #errorState { color: var(--danger); display: none; }
     .hidden { display: none !important; }
+
+    /* CSS Loading Spinner */
+    .spinner {
+      width: 40px;
+      height: 40px;
+      margin: 20px auto 10px auto;
+      border: 4px solid #e9ecef;
+      border-top: 4px solid var(--primary);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
 
     .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
     @media (max-width: 768px) { .dashboard-grid { grid-template-columns: 1fr; } }
@@ -264,10 +279,20 @@
 
     <div id="loadingState">
       <h2>Accountability Telemetry Report</h2>
-      <p style="color: var(--text-muted);">Sign in with your Google account to view and decrypt shared logs.</p>
-      <button id="googleSignInBtn" style="background-color: #198754; color: white; border: none; padding: 12px 24px; font-size: 15px; font-weight: bold; border-radius: 8px; cursor: pointer; margin-top: 10px;">
-        🔑 Sign In with Google
-      </button>
+      <p style="color: var(--text-muted);" id="statusSubtext">Sign in with your Google account to view and decrypt shared logs.</p>
+      
+      <div id="spinnerContainer" class="hidden">
+        <div class="spinner"></div>
+      </div>
+
+      <div id="authActions">
+        <button id="googleSignInBtn" style="background-color: #198754; color: white; border: none; padding: 12px 24px; font-size: 15px; font-weight: bold; border-radius: 8px; cursor: pointer; margin-top: 10px; transition: opacity 0.2s;">
+          🔑 Sign In with Google
+        </button>
+        <div style="margin-top: 15px;">
+          <a href="#" id="switchAccountBtn" style="color: var(--text-muted); font-size: 12px; text-decoration: underline;">Switch Google Account</a>
+        </div>
+      </div>
     </div>
     
     <div id="errorState"></div>
@@ -436,6 +461,18 @@
       return match ? match[1] : null;
     }
 
+    function showLoadingProgress(message) {
+      document.getElementById("statusSubtext").textContent = message;
+      document.getElementById("spinnerContainer").classList.remove("hidden");
+      document.getElementById("authActions").classList.add("hidden");
+    }
+
+    function resetAuthUI() {
+      document.getElementById("statusSubtext").textContent = "Sign in with your Google account to view and decrypt shared logs.";
+      document.getElementById("spinnerContainer").classList.add("hidden");
+      document.getElementById("authActions").classList.remove("hidden");
+    }
+
     function initGisAuth(fileId, keyHex) {
       if (typeof google === "undefined" || !google.accounts || !google.accounts.oauth2) {
         console.warn("GIS library loading delayed. Retrying in 200ms...");
@@ -450,20 +487,32 @@
         callback: async (tokenResponse) => {
           if (tokenResponse.error) {
             console.error("GIS Auth Error:", tokenResponse);
+            resetAuthUI();
             showError("Google Authentication Failed: " + tokenResponse.error);
             return;
           }
+
+          showLoadingProgress("Connecting to Google Drive & Decrypting Logs...");
           accessToken = tokenResponse.access_token;
           await fetchLogsDirect(fileId, keyHex);
         },
       });
 
-      // Sign In button handler
+      // Primary sign-in button handler (Fast/Seamless)
       document.getElementById("googleSignInBtn").onclick = () => {
+        showLoadingProgress("Authenticating with Google...");
+        tokenClient.requestAccessToken({ prompt: '' });
+      };
+
+      // Switch Account button handler (Forces Account Selection Picker)
+      document.getElementById("switchAccountBtn").onclick = (e) => {
+        e.preventDefault();
+        showLoadingProgress("Opening Google Account Switcher...");
         tokenClient.requestAccessToken({ prompt: 'select_account' });
       };
 
-      // Attempt silent auth if partner is already logged into Google
+      // Attempt silent auth on page load
+      showLoadingProgress("Authenticating session...");
       tokenClient.requestAccessToken({ prompt: '' });
     }
 
