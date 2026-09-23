@@ -6,6 +6,8 @@
   <title>Virtue | Accountability Dashboard</title>
   
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Google Identity Services Library -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 
   <style>
     :root {
@@ -261,8 +263,11 @@
     </header>
 
     <div id="loadingState">
-      <h2>Loading Activity Data...</h2>
-      <p style="color: var(--text-muted);">Decrypting report from your Google Drive storage.</p>
+      <h2>Accountability Telemetry Report</h2>
+      <p style="color: var(--text-muted);">Sign in with your Google account to view and decrypt shared logs.</p>
+      <button id="googleSignInBtn" style="background-color: #198754; color: white; border: none; padding: 12px 24px; font-size: 15px; font-weight: bold; border-radius: 8px; cursor: pointer; margin-top: 10px;">
+        🔑 Sign In with Google
+      </button>
     </div>
     
     <div id="errorState"></div>
@@ -382,6 +387,10 @@
     let globalBrowsingLogs = [];
     let globalSearches = [];
     let showAllSearches = false;
+    let tokenClient = null;
+    let accessToken = null;
+
+    const GOOGLE_CLIENT_ID = "369511086314-8queep6f1a9ki2n2jsvtajv1i3iekcrp.apps.googleusercontent.com";
 
     async function importKeyFromHex(hexKey) {
       const cleanHex = hexKey.replace(/[^0-9a-fA-F]/g, '');
@@ -436,7 +445,29 @@
         showError("NO_FILE_ID"); 
         return; 
       }
-      fetchLogs(fileId, keyHex);
+
+      // Initialize Google Identity Services OAuth token client
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/drive.readonly',
+        callback: async (tokenResponse) => {
+          if (tokenResponse.error) {
+            console.error("GIS Auth Error:", tokenResponse);
+            showError("Google Authentication Failed: " + tokenResponse.error);
+            return;
+          }
+          accessToken = tokenResponse.access_token;
+          await fetchLogsDirect(fileId, keyHex);
+        },
+      });
+
+      // Sign In button handler
+      document.getElementById("googleSignInBtn").addEventListener("click", () => {
+        tokenClient.requestAccessToken({ prompt: 'select_account' });
+      });
+
+      // Attempt silent auth if partner is already logged into Google
+      tokenClient.requestAccessToken({ prompt: '' });
 
       document.getElementById("toggleSearchesBtn").addEventListener("click", () => {
         showAllSearches = !showAllSearches;
@@ -447,26 +478,25 @@
       document.getElementById("logSortSelect").addEventListener("change", renderFullLog);
     });
 
-    async function fetchLogs(fileId, keyHex) {
+    async function fetchLogsDirect(fileId, keyHex) {
       try {
-        const PROXY_URL = "https://script.google.com/macros/s/AKfycbx6dPxVNgROInLsl6CHp3SPwcjqR8nfYBGLFiMd-JnD5h4lAY3xWPMhhHnQ4DLmjDtVLg/exec";
+        const driveEndpoint = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
         
-        const response = await fetch(PROXY_URL + "?fileId=" + fileId);
-        
+        const response = await fetch(driveEndpoint, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+
+        if (response.status === 404 || response.status === 403) {
+          throw new Error("VAULT_MISSING");
+        }
+
         if (!response.ok) {
           throw new Error("Log access error (HTTP " + response.status + ").");
         }
-        
+
         const data = await response.json();
-        
-        if (data.error) {
-          if (data.error.includes("File not found") || data.error.includes("Access denied")) {
-            throw new Error("VAULT_MISSING");
-          } else {
-            throw new Error(data.error);
-          }
-        }
-        
         let logs = [];
 
         if (data.encryptedData && data.iv) {
@@ -501,14 +531,14 @@
       let message = "An unknown error occurred while attempting to render the dashboard.";
 
       if (errCode === "VAULT_MISSING") {
-        title = "⚠️ Log File Missing or Deleted";
-        message = "The Virtue log file (virtue_logs.json) could not be located in Google Drive. This happens if the file was deleted, moved to trash, or access permissions were changed.";
+        title = "⚠️ Log File Missing or Access Denied";
+        message = "The Virtue log file could not be accessed. Ensure the file was shared with your Google Account and hasn't been deleted from Drive.";
       } else if (errCode === "DECRYPTION_FAILED") {
         title = "⚠️ Log Data Corrupted or Modified";
         message = "The activity log file in Google Drive could not be decrypted. This indicates the file was manually altered, or an incorrect decryption key was supplied.";
       } else if (errCode === "KEY_MISSING") {
         title = "⚠️ Decryption Key Missing";
-        message = "This dashboard link is missing its decryption key. Please open the report directly using the button inside the Virtue extension popup.";
+        message = "This dashboard link is missing its decryption key. Please open the report directly using the link provided by Virtue.";
       } else if (errCode === "NO_FILE_ID") {
         title = "⚠️ Invalid Dashboard Link";
         message = "No Google Drive file ID was found in the link. Ensure you are using the full link generated by the Virtue extension.";
@@ -516,8 +546,8 @@
         message = errCode;
       }
 
-      errorContainer.innerHTML = 'h2 style="color: var(--danger); margin-top: 0;"' + title + '/h2' +
-        'p style="color: var(--text-main); font-size: 14px; max-width: 500px; margin: 0 auto; line-height: 1.6;"' + message + '/p';
+      errorContainer.innerHTML = '<h2 style="color: var(--danger); margin-top: 0;">' + title + '</h2>' +
+        '<p style="color: var(--text-main); font-size: 14px; max-width: 500px; margin: 0 auto; line-height: 1.6;">' + message + '</p>';
     }
 
     function processAndRender(allLogs, metadata) {

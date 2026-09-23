@@ -5,6 +5,14 @@ import { deriveKeyFromPin, encryptData, decryptData } from './cryptoUtils.js';
 const SAFESEARCH_RULE_IDS = [101, 102, 103];
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Google OAuth Configuration for Cross-Browser launchWebAuthFlow
+const GOOGLE_CLIENT_ID = "369511086314-8queep6f1a9ki2n2jsvtajv1i3iekcrp.apps.googleusercontent.com";
+const OAUTH_SCOPES = [
+  "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/userinfo.email"
+];
+
 // State guard for search query deduplication
 let lastLoggedSearch = { query: "", time: 0 };
 
@@ -24,23 +32,22 @@ function getDeviceInfo() {
   else if (ua.includes("Android")) os = "Android Phone";
   else if (ua.includes("iPhone") || ua.includes("iPad")) os = "iOS Device";
 
-  return `${os} (Chrome)`;
+  const browser = ua.includes("Edg/") ? "Edge" : "Chrome";
+  return `${os} (${browser})`;
 }
 
 // Helper to get active derived key for current user
 async function getActiveEncryptionKey() {
   return new Promise((resolve, reject) => {
-    chrome.storage.local.get(["userPin", "userEmail"], (res) => {
+    chrome.storage.local.get(["userPin", "userEmail"], async (res) => {
       const pin = res.userPin || "1234";
-      chrome.identity.getProfileUserInfo({ accountStatus: "ANY" }, async (userInfo) => {
-        const email = (userInfo && userInfo.email) ? userInfo.email : (res.userEmail || "user@virtue.app");
-        try {
-          const { key, keyHex } = await deriveKeyFromPin(pin, email);
-          resolve({ key, keyHex });
-        } catch (e) {
-          reject(e);
-        }
-      });
+      const email = res.userEmail || "user@virtue.app";
+      try {
+        const { key, keyHex } = await deriveKeyFromPin(pin, email);
+        resolve({ key, keyHex });
+      } catch (e) {
+        reject(e);
+      }
     });
   });
 }
@@ -91,31 +98,43 @@ function base64EncodeUtf8(str) {
 }
 
 // ==========================================
-// 1. AUTHENTICATION & TOKEN MANAGERS
+// 1. CROSS-BROWSER AUTHENTICATION ENGINE
 // ==========================================
 function getValidAuthToken(interactive = false) {
   return new Promise((resolve, reject) => {
     chrome.storage.local.get(["authToken"], (res) => {
-      const oldToken = res.authToken;
-      if (oldToken) {
-        chrome.identity.removeCachedAuthToken({ token: oldToken }, () => {
-          chrome.storage.local.remove(["authToken"], () => {
-            fetchNewToken(interactive, resolve, reject);
-          });
-        });
-      } else {
+      if (res.authToken) {
+        resolve(res.authToken);
+      } else if (interactive) {
         fetchNewToken(interactive, resolve, reject);
+      } else {
+        reject("No saved authorization token available.");
       }
     });
   });
 }
 
 function fetchNewToken(interactive, resolve, reject) {
-  chrome.identity.getAuthToken({ interactive }, (newToken) => {
-    if (chrome.runtime.lastError || !newToken) {
-      return reject(chrome.runtime.lastError || "Failed to retrieve token");
+  const redirectUri = chrome.identity.getRedirectURL();
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+    `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}&` +
+    `response_type=token&` +
+    `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+    `scope=${encodeURIComponent(OAUTH_SCOPES.join(" "))}`;
+
+  chrome.identity.launchWebAuthFlow({ url: authUrl, interactive }, (redirectUrl) => {
+    if (chrome.runtime.lastError || !redirectUrl) {
+      return reject(chrome.runtime.lastError?.message || "Failed to retrieve token");
     }
-    chrome.storage.local.set({ authToken: newToken }, () => resolve(newToken));
+
+    const matches = redirectUrl.match(/access_token=([^&]+)/);
+    const token = matches ? matches[1] : null;
+
+    if (token) {
+      chrome.storage.local.set({ authToken: token }, () => resolve(token));
+    } else {
+      reject("Token parsing failed");
+    }
   });
 }
 
@@ -124,8 +143,7 @@ async function authenticatedFetch(url, options = {}) {
     chrome.storage.local.get(["authToken"], async (res) => {
       let token = res.authToken;
       if (!token) {
-        try { token = await getValidAuthToken(false); } 
-        catch (e) { return reject("No valid authorization token available."); }
+        return reject("No authorization token saved in storage.");
       }
 
       options.headers = { ...options.headers, "Authorization": `Bearer ${token}` };
@@ -133,13 +151,8 @@ async function authenticatedFetch(url, options = {}) {
       try {
         let response = await fetch(url, options);
         if (response.status === 401) {
-          try {
-            const newToken = await getValidAuthToken(false);
-            options.headers["Authorization"] = `Bearer ${newToken}`;
-            response = await fetch(url, options);
-          } catch (refreshErr) {
-            return reject(refreshErr);
-          }
+          chrome.storage.local.remove(["authToken"]);
+          return reject("Auth token expired or revoked.");
         }
         resolve(response);
       } catch (err) { reject(err); }
@@ -261,9 +274,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 async function checkAndSendWeeklyDigest() {
   chrome.storage.local.get([
-    "userName", "partnerName", "partnerEmail", "driveFileId", "lastWeeklyDigestSentAt"
+    "userName", "partnerName", "partnerEmail", "driveFileId", "lastWeeklyDigestSentAt", "authToken"
   ], async (data) => {
-    if (!data.partnerEmail || !data.driveFileId) return;
+    // Guard: Do not attempt digest if user is not signed in
+    if (!data.authToken || !data.partnerEmail || !data.driveFileId) return;
 
     const now = Date.now();
     const lastSent = data.lastWeeklyDigestSentAt || 0;
@@ -275,6 +289,16 @@ async function checkAndSendWeeklyDigest() {
 }
 
 async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
+  // Guard check: Exit early if no auth token exists in local storage
+  const hasToken = await new Promise((res) => {
+    chrome.storage.local.get(["authToken"], (data) => res(Boolean(data.authToken)));
+  });
+
+  if (!hasToken) {
+    console.warn("Report snapshot dispatch skipped: No valid OAuth token available.");
+    return;
+  }
+
   try {
     const { key, keyHex } = await getActiveEncryptionKey();
     const res = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${profileData.driveFileId}?alt=media`);
@@ -390,7 +414,7 @@ async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
 }
 
 // ==========================================
-// 3. DRIVE JSON SYNC ENGINE
+// 3. DRIVE JSON SYNC ENGINE (SAFE MULTI-DEVICE & READ-ONLY LOOKUP)
 // ==========================================
 function flushBufferToDriveJson() {
   chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
@@ -401,15 +425,17 @@ function flushBufferToDriveJson() {
       timestamp: getCleanTimestamp()
     });
 
-    chrome.storage.local.get({ logBuffer: [], driveFileId: "" }, (result) => {
+    chrome.storage.local.get({ logBuffer: [], driveFileId: "", authToken: "" }, (result) => {
       const buffer = result.logBuffer;
       let driveFileId = result.driveFileId;
-      if (buffer.length === 0) return;
+      if (buffer.length === 0 || !result.authToken) return;
 
       let uniqueLogs = Array.from(new Set(buffer.map(a => a.url || a.timestamp))).map(key => buffer.find(a => (a.url || a.timestamp) === key));
 
       if (!driveFileId) {
-        findOrCreateDriveJsonFile((fileId) => { syncLogsToDriveFile(fileId, uniqueLogs); });
+        findDriveJsonFileOnly((fileId) => { 
+          if (fileId) syncLogsToDriveFile(fileId, uniqueLogs); 
+        });
       } else {
         syncLogsToDriveFile(driveFileId, uniqueLogs);
       }
@@ -417,7 +443,8 @@ function flushBufferToDriveJson() {
   });
 }
 
-function findOrCreateDriveJsonFile(callback) {
+// Background script only LOOKS for an existing file. NEVER creates one.
+function findDriveJsonFileOnly(callback) {
   const query = encodeURIComponent("name = 'virtue_logs.json' and trashed = false");
   authenticatedFetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`)
     .then(res => res.json())
@@ -427,33 +454,13 @@ function findOrCreateDriveJsonFile(callback) {
         makeFileUnlisted(fileId);
         chrome.storage.local.set({ driveFileId: fileId }, () => callback(fileId));
       } else {
-        chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "userEmail"], async (profile) => {
-          const { key } = await getActiveEncryptionKey();
-          const emptyEncrypted = await encryptData([], key);
-
-          const metadata = { name: "virtue_logs.json", mimeType: "application/json" };
-          const initialContent = JSON.stringify({
-            metadata: { version: "1.0", userName: profile.userName || "", partnerName: profile.partnerName || "", partnerEmail: profile.partnerEmail || "", userEmail: profile.userEmail || "" },
-            iv: emptyEncrypted.iv,
-            encryptedData: emptyEncrypted.ciphertext
-          });
-
-          authenticatedFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
-            method: "POST",
-            headers: { "Content-Type": "multipart/related; boundary=virtue_boundary" },
-            body: `--virtue_boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--virtue_boundary\r\nContent-Type: application/json\r\n\r\n${initialContent}\r\n--virtue_boundary--`
-          })
-          .then(res => res.json())
-          .then(newFile => {
-            makeFileUnlisted(newFile.id);
-            chrome.storage.local.set({ driveFileId: newFile.id }, () => callback(newFile.id));
-          });
-        });
+        callback(null);
       }
     })
-    .catch(err => console.error("Error finding/creating Drive file:", err));
+    .catch(() => callback(null));
 }
 
+// Safe multi-browser log sync with ETag precondition handling & deduplicated set-merging
 function syncLogsToDriveFile(fileId, newLogs) {
   authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { "Cache-Control": "no-cache" }
@@ -475,7 +482,13 @@ function syncLogsToDriveFile(fileId, newLogs) {
     } catch (e) {}
 
     chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "userEmail"], async (localProfile) => {
-      const combined = [...existingLogs, ...newLogs];
+      // Merge unique entries across devices using a timestamp/URL key
+      const logMap = new Map();
+      [...existingLogs, ...newLogs].forEach(log => {
+        const uniqueKey = `${log.timestamp}_${log.url || log.type || ''}`;
+        logMap.set(uniqueKey, log);
+      });
+      const combined = Array.from(logMap.values());
 
       const cutoffTime = Date.now() - SEVEN_DAYS_MS;
       const rollingLogs = combined.filter(log => {
@@ -519,7 +532,9 @@ function syncLogsToDriveFile(fileId, newLogs) {
       })
       .then(uploadRes => {
         if (uploadRes.status === 412) {
-          setTimeout(() => syncLogsToDriveFile(fileId, newLogs), 500);
+          // ETag conflict (another browser wrote first). Wait randomly and retry merge.
+          const randomJitter = Math.floor(Math.random() * 500) + 200;
+          setTimeout(() => syncLogsToDriveFile(fileId, newLogs), randomJitter);
         } else if (uploadRes.ok) {
           chrome.storage.local.set({ logBuffer: [] });
         }
@@ -528,7 +543,8 @@ function syncLogsToDriveFile(fileId, newLogs) {
     });
   })
   .catch(err => {
-    chrome.storage.local.remove(["driveFileId"]);
+    // Retain driveFileId so we never accidentally orphan or re-query destructively
+    console.warn("Sync fetch error:", err);
   });
 }
 
@@ -611,14 +627,17 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 });
 
 // ==========================================
-// 5. GENERAL NAVIGATION LOGGING
+// 5. GENERAL NAVIGATION LOGGING (SAFE TAB LOOKUPS)
 // ==========================================
 function processNavigation(url, tabId) {
   if (!url.startsWith("http://") && !url.startsWith("https://")) return;
   if (url.includes(chrome.runtime.id) && url.includes("blocked.html")) return;
 
   chrome.tabs.get(tabId, (tab) => {
-    let title = tab ? tab.title : "";
+    // Guard against tabs closed during asynchronous lookup
+    if (chrome.runtime.lastError || !tab) return;
+
+    let title = tab.title || "";
     const searchQuery = extractSearchQuery(url);
     const cleanLocalTime = getCleanTimestamp();
 
@@ -629,12 +648,12 @@ function processNavigation(url, tabId) {
         searchQuery.toLowerCase() === lastLoggedSearch.query.toLowerCase() && 
         (now - lastLoggedSearch.time < 5000)
       ) {
-        return; // Skip redundant navigation trigger
+        return;
       }
       lastLoggedSearch = { query: searchQuery, time: now };
     }
 
-    if (tab && tab.incognito) { title = `[INCOGNITO] ${title}`; }
+    if (tab.incognito) { title = `[INCOGNITO] ${title}`; }
     let finalUrl = url;
     if (url.includes("virtue_bypass=true")) {
       finalUrl = url.replace(/[?&]virtue_bypass=true/, "");
@@ -668,41 +687,37 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === "RECOVER_USER_PIN") {
     chrome.storage.local.get(["userPin", "userName", "userEmail"], (data) => {
-      chrome.identity.getProfileUserInfo({ accountStatus: "ANY" }, async (userInfo) => {
-        const targetEmail = (userInfo && userInfo.email) ? userInfo.email : data.userEmail;
+      const targetEmail = data.userEmail;
 
-        if (!targetEmail) {
-          console.error("Virtue PIN Recovery Error: Profile email not available");
-          sendResponse({ success: false, error: "No user email found" });
-          return;
-        }
+      if (!targetEmail) {
+        console.error("Virtue PIN Recovery Error: Profile email not available");
+        sendResponse({ success: false, error: "No user email found" });
+        return;
+      }
 
-        const userPin = data.userPin || "1234";
-        const userName = data.userName || "Friend";
+      const userPin = data.userPin || "1234";
+      const userName = data.userName || "Friend";
 
-        const subject = "🔑 Your Virtue PIN Recovery";
-        const bodyHtml = `
-          <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 500px; border: 1px solid #e2e8f0; border-radius: 8px;">
-            <h2 style="color: #198754; margin-top: 0;">Virtue Security Recovery</h2>
-            <p>Hello ${userName},</p>
-            <p>You requested recovery for your 4-digit Virtue security PIN.</p>
-            <div style="background-color: #f1f5f9; padding: 15px; font-size: 28px; font-weight: bold; letter-spacing: 6px; text-align: center; border-radius: 8px; color: #0f172a; margin: 20px 0;">
-              ${userPin}
-            </div>
-            <p style="color: #64748b; font-size: 12px; margin-top: 20px;">
-              If you did not request this PIN recovery, please check your Virtue extension settings.
-            </p>
+      const subject = "🔑 Your Virtue PIN Recovery";
+      const bodyHtml = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 500px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #198754; margin-top: 0;">Virtue Security Recovery</h2>
+          <p>Hello ${userName},</p>
+          <p>You requested recovery for your 4-digit Virtue security PIN.</p>
+          <div style="background-color: #f1f5f9; padding: 15px; font-size: 28px; font-weight: bold; letter-spacing: 6px; text-align: center; border-radius: 8px; color: #0f172a; margin: 20px 0;">
+            ${userPin}
           </div>
-        `;
+          <p style="color: #64748b; font-size: 12px; margin-top: 20px;">
+            If you did not request this PIN recovery, please check your Virtue extension settings.
+          </p>
+        </div>
+      `;
 
-        const success = await sendGmailNotification({
-          toEmail: targetEmail,
-          subject: subject,
-          bodyHtml: bodyHtml
-        });
-
-        sendResponse({ success });
-      });
+      sendGmailNotification({
+        toEmail: targetEmail,
+        subject: subject,
+        bodyHtml: bodyHtml
+      }).then(success => sendResponse({ success }));
     });
     return true;
   }
@@ -725,28 +740,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === "SWITCH_GOOGLE_ACCOUNT") {
     flushBufferToDriveJson();
 
-    chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "driveFileId"], async (profile) => {
+    chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "driveFileId", "authToken"], async (profile) => {
       if (profile.partnerEmail && profile.driveFileId) {
         await dispatchReportSnapshot(profile, "⚠️ Virtue Pre-Disconnect Accountability Snapshot");
       }
 
-      chrome.storage.local.get(["authToken"], (res) => {
-        const token = res.authToken;
-        if (token) {
-          fetch(`https://accounts.google.com/o/oauth2/revoke?token=${token}`)
-            .finally(() => {
-              chrome.identity.removeCachedAuthToken({ token }, () => {
-                chrome.storage.local.remove(["authToken", "driveFileId", "userEmail"], () => {
-                  sendResponse({ success: true });
-                });
-              });
+      const token = profile.authToken;
+      if (token) {
+        fetch(`https://accounts.google.com/o/oauth2/revoke?token=${token}`)
+          .finally(() => {
+            chrome.storage.local.remove(["authToken", "driveFileId", "userEmail"], () => {
+              sendResponse({ success: true });
             });
-        } else {
-          chrome.storage.local.remove(["authToken", "driveFileId", "userEmail"], () => {
-            sendResponse({ success: true });
           });
-        }
-      });
+      } else {
+        chrome.storage.local.remove(["authToken", "driveFileId", "userEmail"], () => {
+          sendResponse({ success: true });
+        });
+      }
     });
     return true;
   }
