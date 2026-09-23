@@ -480,7 +480,18 @@
         return;
       }
 
-      // Initialize Google Identity Services OAuth token client
+      // 1. Check for valid cached token in sessionStorage
+      const savedToken = sessionStorage.getItem("virtue_gis_token");
+      const tokenExpiry = sessionStorage.getItem("virtue_gis_expiry");
+
+      if (savedToken && tokenExpiry && Date.now() < parseInt(tokenExpiry, 10)) {
+        showLoadingProgress("Loading cached session...");
+        accessToken = savedToken;
+        fetchLogsDirect(fileId, keyHex);
+        return;
+      }
+
+      // 2. Initialize GIS Token Client
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: 'https://www.googleapis.com/auth/drive.readonly',
@@ -494,26 +505,51 @@
 
           showLoadingProgress("Connecting to Google Drive & Decrypting Logs...");
           accessToken = tokenResponse.access_token;
+
+          // Cache token for up to 50 minutes
+          const expiresInMs = (tokenResponse.expires_in || 3000) * 1000;
+          sessionStorage.setItem("virtue_gis_token", accessToken);
+          sessionStorage.setItem("virtue_gis_expiry", (Date.now() + expiresInMs).toString());
+
           await fetchLogsDirect(fileId, keyHex);
         },
       });
 
-      // Primary sign-in button handler (Fast/Seamless)
-      document.getElementById("googleSignInBtn").onclick = () => {
+      // Helper to handle window focus after opening popup
+      const triggerAuthWithFocusCheck = (promptMode) => {
         showLoadingProgress("Authenticating with Google...");
-        tokenClient.requestAccessToken({ prompt: '' });
+        
+        // Listen for tab focus regaining after user closes or completes popup
+        const handleFocus = () => {
+          window.removeEventListener("focus", handleFocus);
+          
+          // Give callback 1 second to fire if auth succeeded; otherwise reset button
+          setTimeout(() => {
+            if (!accessToken) {
+              resetAuthUI();
+            }
+          }, 1000);
+        };
+
+        window.addEventListener("focus", handleFocus);
+        tokenClient.requestAccessToken({ prompt: promptMode });
       };
 
-      // Switch Account button handler (Forces Account Selection Picker)
+      // Primary sign-in button handler
+      document.getElementById("googleSignInBtn").onclick = () => {
+        triggerAuthWithFocusCheck('');
+      };
+
+      // Switch Account button handler
       document.getElementById("switchAccountBtn").onclick = (e) => {
         e.preventDefault();
-        showLoadingProgress("Opening Google Account Switcher...");
-        tokenClient.requestAccessToken({ prompt: 'select_account' });
+        sessionStorage.removeItem("virtue_gis_token");
+        sessionStorage.removeItem("virtue_gis_expiry");
+        triggerAuthWithFocusCheck('select_account');
       };
 
-      // Attempt silent auth on page load
-      showLoadingProgress("Authenticating session...");
-      tokenClient.requestAccessToken({ prompt: '' });
+      // Initial page load state
+      resetAuthUI();
     }
 
     document.addEventListener("DOMContentLoaded", () => {
