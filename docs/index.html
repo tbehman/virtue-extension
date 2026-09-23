@@ -6,8 +6,8 @@
   <title>Virtue | Accountability Dashboard</title>
   
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Google Identity Services Library -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- Google Identity Services Library (Synchronous Load) -->
+  <script src="https://accounts.google.com/gsi/client"></script>
 
   <style>
     :root {
@@ -436,14 +436,11 @@
       return match ? match[1] : null;
     }
 
-    document.addEventListener("DOMContentLoaded", () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const fileId = urlParams.get("fileId");
-      const keyHex = getKeyFromHash();
-
-      if (!fileId) { 
-        showError("NO_FILE_ID"); 
-        return; 
+    function initGisAuth(fileId, keyHex) {
+      if (typeof google === "undefined" || !google.accounts || !google.accounts.oauth2) {
+        console.warn("GIS library loading delayed. Retrying in 200ms...");
+        setTimeout(() => initGisAuth(fileId, keyHex), 200);
+        return;
       }
 
       // Initialize Google Identity Services OAuth token client
@@ -462,12 +459,25 @@
       });
 
       // Sign In button handler
-      document.getElementById("googleSignInBtn").addEventListener("click", () => {
+      document.getElementById("googleSignInBtn").onclick = () => {
         tokenClient.requestAccessToken({ prompt: 'select_account' });
-      });
+      };
 
       // Attempt silent auth if partner is already logged into Google
       tokenClient.requestAccessToken({ prompt: '' });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const fileId = urlParams.get("fileId");
+      const keyHex = getKeyFromHash();
+
+      if (!fileId) { 
+        showError("NO_FILE_ID"); 
+        return; 
+      }
+
+      initGisAuth(fileId, keyHex);
 
       document.getElementById("toggleSearchesBtn").addEventListener("click", () => {
         showAllSearches = !showAllSearches;
