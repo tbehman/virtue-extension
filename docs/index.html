@@ -870,7 +870,13 @@
           const hasActiveSession = unmonitoredWindows.some(w => w.end === null);
           const possessiveName = userName && userName !== "User" ? (userName.endsWith('s') ? userName + "'" : userName + "'s") : "the user's";
 
-          noticeHtml += '<div class="audit-section"><div class="audit-section-title">🕵️ Unmonitored Incognito Sessions (' + devName + ')</div><ul>';
+          // DYNAMIC BROWSER UI VERBIAGE
+          const isEdge = devName.includes("Edge");
+          const modeTitle = isEdge ? "InPrivate" : "Incognito";
+          const settingsUrl = isEdge ? "edge://extensions" : "chrome://extensions";
+          const toggleLabel = isEdge ? "Allow in InPrivate" : "Allow in Incognito";
+
+          noticeHtml += '<div class="audit-section"><div class="audit-section-title">🕵️ Unmonitored ' + modeTitle + ' Sessions (' + devName + ')</div><ul>';
 
           unmonitoredWindows.forEach(win => {
             const timeRangeText = formatTimeRange(win.start.toISOString(), win.end ? win.end.toISOString() : null);
@@ -884,7 +890,7 @@
           noticeHtml += '</ul>';
 
           if (hasActiveSession) {
-            noticeHtml += '<div class="fix-box"><strong>🛠️ How to Fix Active Gaps:</strong> On ' + possessiveName + ' computer, open <code>chrome://extensions</code> ➔ click <strong>Details</strong> on Virtue ➔ turn ON <strong>"Allow in Incognito"</strong>.</div>';
+            noticeHtml += '<div class="fix-box"><strong>🛠️ How to Fix Active Gaps:</strong> On ' + possessiveName + ' computer, open <code>' + settingsUrl + '</code> ➔ click <strong>Details</strong> on Virtue ➔ turn ON <strong>"' + toggleLabel + '"</strong>.</div>';
           }
 
           noticeHtml += '<div class="audit-notice-footer">These gaps may indicate unmonitored browsing periods.</div></div>';
