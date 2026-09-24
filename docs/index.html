@@ -141,7 +141,7 @@
       gap: 6px;
     }
     .audit-notice ul { margin: 4px 0 8px 0; padding-left: 20px; }
-    .audit-notice li { margin-bottom: 5px; line-height: 1.4; }
+    .audit-notice li { margin-bottom: 6px; line-height: 1.5; }
     .audit-notice a { color: #92400e; font-weight: 600; }
     
     .fix-box {
@@ -818,16 +818,22 @@
       const startTime = startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       if (!endIso) {
-        return '<strong>' + startDay + '</strong> │ ' + startTime + ' – <strong>Present (Active Session)</strong>';
+        return '<strong>' + startDay + ', ' + startTime + '</strong> – <span style="background: #fef3c7; color: #b45309; padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 11px;">PRESENT (ACTIVE SESSION)</span>';
       }
 
       const endDate = new Date(endIso);
+      const endDay = endDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
       const endTime = endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const diffMin = Math.round((endDate - startDate) / 60000);
 
       let durationStr = diffMin < 1 ? "< 1 min" : diffMin < 60 ? diffMin + " min" : (diffMin / 60).toFixed(1) + " hr";
 
-      return '<strong>' + startDay + '</strong> │ ' + startTime + ' – ' + endTime + ' (' + durationStr + ')';
+      // Multi-day span handling
+      if (startDate.toDateString() !== endDate.toDateString()) {
+        return '<strong>' + startDay + ', ' + startTime + '</strong> – <strong>' + endDay + ', ' + endTime + '</strong> (' + durationStr + ')';
+      } else {
+        return '<strong>' + startDay + '</strong> │ ' + startTime + ' – ' + endTime + ' (' + durationStr + ')';
+      }
     }
 
     function processAuditStream(heartbeats, ignoredWarningLogs, userName) {
@@ -883,7 +889,7 @@
             if (win.end) {
               noticeHtml += '<li>' + timeRangeText + '</li>';
             } else {
-              noticeHtml += '<li style="font-weight: bold; color: #b45309;">🚨 ' + timeRangeText + '</li>';
+              noticeHtml += '<li style="color: #b45309;">🚨 ' + timeRangeText + '</li>';
             }
           });
 
