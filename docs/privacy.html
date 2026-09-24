@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Virtue | Privacy Policy</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #212529; background: #f8f9fa; margin: 0; padding: 40px 20px; }
+    .container { max-width: 800px; margin: 0 auto; background: #ffffff; padding: 40px; border-radius: 12px; border: 1px solid #dce1e6; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    h1 { color: #198754; font-size: 28px; margin-top: 0; }
+    h2 { color: #0f172a; font-size: 18px; margin-top: 24px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; }
+    p, li { font-size: 14px; color: #475569; }
+    ul { padding-left: 20px; }
+    .highlight-box { background: #e8f5e9; border: 1px solid #a5d6a7; color: #1b5e20; padding: 16px; border-radius: 8px; font-weight: 500; font-size: 14px; margin: 20px 0; }
+    footer { margin-top: 40px; font-size: 12px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>Virtue Privacy Policy</h1>
+    <p><strong>Effective Date:</strong> September 2026</p>
+
+    <div class="highlight-box">
+      🛡️ <strong>Zero Data Collection:</strong> Virtue is built on a zero-knowledge architecture. We do not own servers, we do not collect your personal data, and we will never track, sell, or monetize your browsing history.
+    </div>
+
+    <h2>1. Overview</h2>
+    <p>Virtue ("we", "our", or "the extension") is an open-source browser extension designed to provide transparent web accountability and telemetry for individuals and trusted partners. Your privacy is protected by design: all logged activity remains strictly under your ownership inside your personal Google Account.</p>
+
+    <h2>2. Information Processed by the Extension</h2>
+    <p>To provide accountability features, Virtue processes the following information locally on your device:</p>
+    <ul>
+      <li><strong>Browsing Telemetry:</strong> Domain names, URL paths, page titles, search queries, and access timestamps.</li>
+      <li><strong>Security & Diagnostics:</strong> Heartbeat timestamps, device labels (e.g., Windows PC, Mac), and InPrivate/Incognito monitoring state.</li>
+      <li><strong>Accountability Settings:</strong> Designated accountability partner email addresses, custom blocked site lists, and user PIN hashes.</li>
+    </ul>
+
+    <h2>3. How Your Data Is Stored & Encrypted</h2>
+    <p>Virtue does not transmit your data to any central server or developer database. Storage and encryption are handled as follows:</p>
+    <ul>
+      <li><strong>Local Storage:</strong> Temporary browsing logs and user configurations are stored locally in your browser’s isolated storage area (<code>chrome.storage.local</code>).</li>
+      <li><strong>Client-Side Encryption:</strong> Log data is encrypted locally using client-side AES-GCM encryption before being transmitted anywhere.</li>
+      <li><strong>Google Drive Storage:</strong> Encrypted activity logs are synced directly to a dedicated file in your personal Google Drive account. Only you and individuals holding your unique decryption key link can decrypt and view the logs.</li>
+    </ul>
+
+    <h2>4. How Permissions & Google Services Are Used</h2>
+    <p>Virtue requests minimal, targeted permissions required for core accountability functionality:</p>
+    <ul>
+      <li><code>drive.file</code>: Grants access strictly to the single log file created by Virtue in your Google Drive. Virtue cannot read, edit, or delete any other files in your Google Drive.</li>
+      <li><code>gmail.send</code>: Used exclusively to dispatch automated accountability digest emails and security alerts directly from your Google Account to your designated partner.</li>
+      <li><code>webNavigation</code> & <code>declarativeNetRequest</code>: Used to detect unmonitored browsing gaps, apply dynamic filtering rules, and direct restricted URLs to the warning block page.</li>
+    </ul>
+
+    <h2>5. Third-Party Data Sharing</h2>
+    <p>We do not share, transfer, or sell your personal data to any third party under any circumstances. There are no analytics trackers, advertising networks, or external telemetry services integrated into Virtue.</p>
+
+    <h2>6. User Control & Data Retention</h2>
+    <ul>
+      <li><strong>Rolling Data Retention:</strong> Virtue automatically maintains a rolling 7-day retention window for activity logs. Older entries are pruned automatically to minimize storage footprint.</li>
+      <li><strong>Data Deletion:</strong> You can purge all stored activity at any time by disconnecting your Google Account from the extension popup, uninstalling the extension, or deleting the <code>virtue_logs.json</code> file directly from your Google Drive.</li>
+    </ul>
+
+    <h2>7. Contact & Support</h2>
+    <p>Virtue is an open-source project. If you have questions regarding this Privacy Policy or security practices, you can inspect the source code or submit an issue on our public repository at <a href="https://github.com/tbehman/virtue-extension" target="_blank">GitHub</a>.</p>
+
+    <footer>
+      Virtue Accountability Extension • Privacy First & Open Source
+    </footer>
+  </div>
+
+</body>
+</html>
