@@ -415,7 +415,7 @@ async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
 }
 
 // ==========================================
-// 3. DRIVE JSON SYNC ENGINE
+// 3. DRIVE JSON SYNC ENGINE (WITH BLOCKLIST SYNC)
 // ==========================================
 function flushBufferToDriveJson() {
   chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
@@ -480,7 +480,10 @@ function syncLogsToDriveFile(fileId, newLogs) {
       }
     } catch (e) {}
 
-    chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "userEmail"], async (localProfile) => {
+    chrome.storage.local.get([
+      "userName", "partnerName", "partnerEmail", "userEmail", 
+      "customBlacklist", "customWhitelist", "customKeywords", "filterMode", "settingsLastUpdated"
+    ], async (localProfile) => {
       const logMap = new Map();
       [...existingLogs, ...newLogs].forEach(log => {
         const uniqueKey = `${log.timestamp}_${log.url || log.type || ''}`;
@@ -499,12 +502,33 @@ function syncLogsToDriveFile(fileId, newLogs) {
       const driveMeta = fileData.metadata || {};
       const profileUpdates = {};
 
+      // Profile Sync
       if (!localProfile.userName && driveMeta.userName) profileUpdates.userName = driveMeta.userName;
       if (!localProfile.partnerName && driveMeta.partnerName) profileUpdates.partnerName = driveMeta.partnerName;
       if (!localProfile.partnerEmail && driveMeta.partnerEmail) profileUpdates.partnerEmail = driveMeta.partnerEmail;
       if (!localProfile.userEmail && driveMeta.userEmail) profileUpdates.userEmail = driveMeta.userEmail;
 
+      // Filter/Blocklist Sync (Master State pattern)
+      const driveSettingsTime = driveMeta.settingsLastUpdated || 0;
+      const localSettingsTime = localProfile.settingsLastUpdated || 0;
+
+      if (driveSettingsTime > localSettingsTime) {
+        // Drive holds a newer configuration: sync Drive settings down to local browser
+        if (driveMeta.customBlacklist) profileUpdates.customBlacklist = driveMeta.customBlacklist;
+        if (driveMeta.customWhitelist) profileUpdates.customWhitelist = driveMeta.customWhitelist;
+        if (driveMeta.customKeywords) profileUpdates.customKeywords = driveMeta.customKeywords;
+        if (driveMeta.filterMode) profileUpdates.filterMode = driveMeta.filterMode;
+        profileUpdates.settingsLastUpdated = driveSettingsTime;
+      }
+
       if (Object.keys(profileUpdates).length > 0) chrome.storage.local.set(profileUpdates);
+
+      // Prepare metadata payload for upload (use local settings if newer, otherwise keep Drive master)
+      const activeSettingsTime = Math.max(localSettingsTime, driveSettingsTime);
+      const activeBlacklist = localSettingsTime >= driveSettingsTime ? (localProfile.customBlacklist || driveMeta.customBlacklist || []) : (driveMeta.customBlacklist || []);
+      const activeWhitelist = localSettingsTime >= driveSettingsTime ? (localProfile.customWhitelist || driveMeta.customWhitelist || []) : (driveMeta.customWhitelist || []);
+      const activeKeywords  = localSettingsTime >= driveSettingsTime ? (localProfile.customKeywords || driveMeta.customKeywords || []) : (driveMeta.customKeywords || []);
+      const activeFilterMode = localSettingsTime >= driveSettingsTime ? (localProfile.filterMode || driveMeta.filterMode || "blocklist") : (driveMeta.filterMode || "blocklist");
 
       const updatedPayload = {
         metadata: {
@@ -514,6 +538,11 @@ function syncLogsToDriveFile(fileId, newLogs) {
           partnerName: localProfile.partnerName || driveMeta.partnerName || "",
           partnerEmail: localProfile.partnerEmail || driveMeta.partnerEmail || "",
           userEmail: localProfile.userEmail || driveMeta.userEmail || "",
+          customBlacklist: activeBlacklist,
+          customWhitelist: activeWhitelist,
+          customKeywords: activeKeywords,
+          filterMode: activeFilterMode,
+          settingsLastUpdated: activeSettingsTime,
           lastUpdated: getCleanTimestamp()
         },
         iv: encrypted.iv,
