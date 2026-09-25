@@ -826,7 +826,25 @@
       const endTime = endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const diffMin = Math.round((endDate - startDate) / 60000);
 
-      let durationStr = diffMin < 1 ? "< 1 min" : diffMin < 60 ? diffMin + " min" : (diffMin / 60).toFixed(1) + " hr";
+      // Human-readable duration string calculation
+      const totalHours = diffMin / 60;
+      let durationStr = "";
+
+      if (diffMin < 1) {
+        durationStr = "< 1 min";
+      } else if (diffMin < 60) {
+        durationStr = `${diffMin} min`;
+      } else if (totalHours < 24) {
+        durationStr = `${totalHours.toFixed(1)} hr`;
+      } else {
+        const days = Math.floor(totalHours / 24);
+        const remainingHours = Math.round(totalHours % 24);
+        if (remainingHours === 0) {
+          durationStr = `${days} ${days === 1 ? 'day' : 'days'}`;
+        } else {
+          durationStr = `${days}d ${remainingHours}h`;
+        }
+      }
 
       // Multi-day span handling
       if (startDate.toDateString() !== endDate.toDateString()) {
