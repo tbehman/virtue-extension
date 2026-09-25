@@ -98,17 +98,15 @@ function base64EncodeUtf8(str) {
 }
 
 // ==========================================
-// 1. CROSS-BROWSER AUTHENTICATION ENGINE
+// 1. CROSS-BROWSER AUTHENTICATION ENGINE (SELF-HEALING)
 // ==========================================
 function getValidAuthToken(interactive = false) {
   return new Promise((resolve, reject) => {
     chrome.storage.local.get(["authToken"], (res) => {
       if (res.authToken) {
         resolve(res.authToken);
-      } else if (interactive) {
-        fetchNewToken(interactive, resolve, reject);
       } else {
-        reject("No saved authorization token available.");
+        fetchNewToken(interactive, resolve, reject);
       }
     });
   });
@@ -142,17 +140,31 @@ async function authenticatedFetch(url, options = {}) {
   return new Promise((resolve, reject) => {
     chrome.storage.local.get(["authToken"], async (res) => {
       let token = res.authToken;
+
+      // 1. If no token exists, attempt silent retrieval immediately
       if (!token) {
-        return reject("No authorization token saved in storage.");
+        try {
+          token = await new Promise((resToken, rejToken) => fetchNewToken(false, resToken, rejToken));
+        } catch (silentErr) {
+          return reject("No valid authorization token available.");
+        }
       }
 
       options.headers = { ...options.headers, "Authorization": `Bearer ${token}` };
 
       try {
         let response = await fetch(url, options);
+
+        // 2. If token expired (401), clear local token and execute ONE silent refresh retry
         if (response.status === 401) {
           chrome.storage.local.remove(["authToken"]);
-          return reject("Auth token expired or revoked.");
+          try {
+            const freshToken = await new Promise((resToken, rejToken) => fetchNewToken(false, resToken, rejToken));
+            options.headers["Authorization"] = `Bearer ${freshToken}`;
+            response = await fetch(url, options);
+          } catch (retryErr) {
+            return reject("Auth token expired and silent refresh failed.");
+          }
         }
         resolve(response);
       } catch (err) { reject(err); }
@@ -274,10 +286,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 async function checkAndSendWeeklyDigest() {
   chrome.storage.local.get([
-    "userName", "partnerName", "partnerEmail", "driveFileId", "lastWeeklyDigestSentAt", "authToken"
+    "userName", "partnerName", "partnerEmail", "driveFileId", "lastWeeklyDigestSentAt"
   ], async (data) => {
-    // Guard: Do not attempt digest if user is not signed in
-    if (!data.authToken || !data.partnerEmail || !data.driveFileId) return;
+    if (!data.partnerEmail || !data.driveFileId) return;
 
     const now = Date.now();
     const lastSent = data.lastWeeklyDigestSentAt || 0;
@@ -289,16 +300,6 @@ async function checkAndSendWeeklyDigest() {
 }
 
 async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
-  // Guard check: Exit early if no auth token exists in local storage
-  const hasToken = await new Promise((res) => {
-    chrome.storage.local.get(["authToken"], (data) => res(Boolean(data.authToken)));
-  });
-
-  if (!hasToken) {
-    console.warn("Report snapshot dispatch skipped: No valid OAuth token available.");
-    return;
-  }
-
   try {
     const { key, keyHex } = await getActiveEncryptionKey();
     const res = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${profileData.driveFileId}?alt=media`);
@@ -425,10 +426,10 @@ function flushBufferToDriveJson() {
       timestamp: getCleanTimestamp()
     });
 
-    chrome.storage.local.get({ logBuffer: [], driveFileId: "", authToken: "" }, (result) => {
+    chrome.storage.local.get({ logBuffer: [], driveFileId: "" }, (result) => {
       const buffer = result.logBuffer;
       let driveFileId = result.driveFileId;
-      if (buffer.length === 0 || !result.authToken) return;
+      if (buffer.length === 0) return;
 
       let uniqueLogs = Array.from(new Set(buffer.map(a => a.url || a.timestamp))).map(key => buffer.find(a => (a.url || a.timestamp) === key));
 
@@ -633,9 +634,8 @@ function processNavigation(url, tabId) {
   if (!url.startsWith("http://") && !url.startsWith("https://")) return;
   if (url.includes(chrome.runtime.id) && url.includes("blocked.html")) return;
 
-  chrome.tabs.get(tabId, (tab) => {
-    // Guard against tabs closed during asynchronous lookup
-    if (chrome.runtime.lastError || !tab) return;
+  chrome.tabs.get(tabId).then((tab) => {
+    if (!tab) return;
 
     let title = tab.title || "";
     const searchQuery = extractSearchQuery(url);
@@ -668,6 +668,8 @@ function processNavigation(url, tabId) {
       timestamp: cleanLocalTime,
       flagged: finalUrl.includes("[BLOCKED]")
     });
+  }).catch(() => {
+    // Safely ignore tab lookups if tab closes before promise resolves
   });
 }
 
