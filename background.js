@@ -5,7 +5,7 @@ import { deriveKeyFromPin, encryptData, decryptData } from './cryptoUtils.js';
 const SAFESEARCH_RULE_IDS = [101, 102, 103];
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Google OAuth Configuration for Cross-Browser launchWebAuthFlow
+// Google OAuth Configuration
 const GOOGLE_CLIENT_ID = "369511086314-8queep6f1a9ki2n2jsvtajv1i3iekcrp.apps.googleusercontent.com";
 const OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
@@ -19,6 +19,10 @@ let lastLoggedSearch = { query: "", time: 0 };
 // ==========================================
 // 0. UTILITIES & DEVICE IDENTIFICATION
 // ==========================================
+function isMicrosoftEdge() {
+  return navigator.userAgent.includes("Edg/");
+}
+
 function getCleanTimestamp() {
   return new Date().toISOString();
 }
@@ -32,7 +36,7 @@ function getDeviceInfo() {
   else if (ua.includes("Android")) os = "Android Phone";
   else if (ua.includes("iPhone") || ua.includes("iPad")) os = "iOS Device";
 
-  const browser = ua.includes("Edg/") ? "Edge" : "Chrome";
+  const browser = isMicrosoftEdge() ? "Edge" : "Chrome";
   return `${os} (${browser})`;
 }
 
@@ -98,42 +102,57 @@ function base64EncodeUtf8(str) {
 }
 
 // ==========================================
-// 1. CROSS-BROWSER AUTHENTICATION ENGINE (SELF-HEALING)
+// 1. DUAL-ENGINE AUTHENTICATION ROUTER
 // ==========================================
-function getValidAuthToken(interactive = false) {
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.get(["authToken"], (res) => {
-      if (res.authToken) {
-        resolve(res.authToken);
-      } else {
-        fetchNewToken(interactive, resolve, reject);
-      }
+function notifyActiveTabOfAuthFailure() {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0]?.id) {
+      chrome.tabs.sendMessage(tabs[0].id, { type: "SHOW_REAUTH_BANNER" }).catch(() => {});
+    }
+  });
+}
+
+function clearAuthFailureBanner() {
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach(tab => {
+      chrome.tabs.sendMessage(tab.id, { type: "HIDE_REAUTH_BANNER" }).catch(() => {});
     });
   });
 }
 
 function fetchNewToken(interactive, resolve, reject) {
-  const redirectUri = chrome.identity.getRedirectURL();
-  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-    `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}&` +
-    `response_type=token&` +
-    `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-    `scope=${encodeURIComponent(OAUTH_SCOPES.join(" "))}`;
+  if (isMicrosoftEdge()) {
+    // Edge Path: launchWebAuthFlow
+    const redirectUri = chrome.identity.getRedirectURL();
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+      `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}&` +
+      `response_type=token&` +
+      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+      `scope=${encodeURIComponent(OAUTH_SCOPES.join(" "))}`;
 
-  chrome.identity.launchWebAuthFlow({ url: authUrl, interactive }, (redirectUrl) => {
-    if (chrome.runtime.lastError || !redirectUrl) {
-      return reject(chrome.runtime.lastError?.message || "Failed to retrieve token");
-    }
+    chrome.identity.launchWebAuthFlow({ url: authUrl, interactive }, (redirectUrl) => {
+      if (chrome.runtime.lastError || !redirectUrl) {
+        return reject(chrome.runtime.lastError?.message || "Failed to retrieve token");
+      }
 
-    const matches = redirectUrl.match(/access_token=([^&]+)/);
-    const token = matches ? matches[1] : null;
+      const matches = redirectUrl.match(/access_token=([^&]+)/);
+      const token = matches ? matches[1] : null;
 
-    if (token) {
+      if (token) {
+        chrome.storage.local.set({ authToken: token }, () => resolve(token));
+      } else {
+        reject("Token parsing failed");
+      }
+    });
+  } else {
+    // Chrome Path: Native getAuthToken
+    chrome.identity.getAuthToken({ interactive }, (token) => {
+      if (chrome.runtime.lastError || !token) {
+        return reject(chrome.runtime.lastError?.message || "Failed to retrieve token");
+      }
       chrome.storage.local.set({ authToken: token }, () => resolve(token));
-    } else {
-      reject("Token parsing failed");
-    }
-  });
+    });
+  }
 }
 
 async function authenticatedFetch(url, options = {}) {
@@ -141,11 +160,11 @@ async function authenticatedFetch(url, options = {}) {
     chrome.storage.local.get(["authToken"], async (res) => {
       let token = res.authToken;
 
-      // 1. Attempt silent background auth if token is missing from storage
       if (!token) {
         try {
           token = await new Promise((resToken, rejToken) => fetchNewToken(false, resToken, rejToken));
         } catch (silentErr) {
+          notifyActiveTabOfAuthFailure();
           return reject("No valid authorization token available.");
         }
       }
@@ -155,7 +174,6 @@ async function authenticatedFetch(url, options = {}) {
       try {
         let response = await fetch(url, options);
 
-        // 2. If token expired (401), clear local token and execute ONE silent refresh retry
         if (response.status === 401) {
           chrome.storage.local.remove(["authToken"]);
           try {
@@ -163,6 +181,7 @@ async function authenticatedFetch(url, options = {}) {
             options.headers["Authorization"] = `Bearer ${freshToken}`;
             response = await fetch(url, options);
           } catch (retryErr) {
+            notifyActiveTabOfAuthFailure();
             return reject("Auth token expired and silent refresh failed.");
           }
         }
@@ -513,7 +532,6 @@ function syncLogsToDriveFile(fileId, newLogs) {
       const localSettingsTime = localProfile.settingsLastUpdated || 0;
 
       if (driveSettingsTime > localSettingsTime) {
-        // Drive holds a newer configuration: sync Drive settings down to local browser
         if (driveMeta.customBlacklist) profileUpdates.customBlacklist = driveMeta.customBlacklist;
         if (driveMeta.customWhitelist) profileUpdates.customWhitelist = driveMeta.customWhitelist;
         if (driveMeta.customKeywords) profileUpdates.customKeywords = driveMeta.customKeywords;
@@ -523,7 +541,6 @@ function syncLogsToDriveFile(fileId, newLogs) {
 
       if (Object.keys(profileUpdates).length > 0) chrome.storage.local.set(profileUpdates);
 
-      // Prepare metadata payload for upload (use local settings if newer, otherwise keep Drive master)
       const activeSettingsTime = Math.max(localSettingsTime, driveSettingsTime);
       const activeBlacklist = localSettingsTime >= driveSettingsTime ? (localProfile.customBlacklist || driveMeta.customBlacklist || []) : (driveMeta.customBlacklist || []);
       const activeWhitelist = localSettingsTime >= driveSettingsTime ? (localProfile.customWhitelist || driveMeta.customWhitelist || []) : (driveMeta.customWhitelist || []);
@@ -701,9 +718,19 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
 });
 
 // ==========================================
-// 6. MESSAGE LISTENERS FOR POPUP ACTIONS
+// 6. MESSAGE LISTENERS FOR POPUP & RE-AUTH ACTIONS
 // ==========================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.type === "TRIGGER_INTERACTIVE_AUTH") {
+    fetchNewToken(true, (token) => {
+      clearAuthFailureBanner();
+      flushBufferToDriveJson();
+    }, (err) => {
+      console.error("Interactive auth failed:", err);
+    });
+    return true;
+  }
+
   if (request.type === "RECOVER_USER_PIN") {
     chrome.storage.local.get(["userPin", "userName", "userEmail"], (data) => {
       const targetEmail = data.userEmail;
