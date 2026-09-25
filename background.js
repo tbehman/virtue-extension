@@ -98,15 +98,17 @@ function base64EncodeUtf8(str) {
 }
 
 // ==========================================
-// 1. CROSS-BROWSER AUTHENTICATION ENGINE (SELF-HEALING)
+// 1. ORIGINAL CROSS-BROWSER AUTHENTICATION ENGINE
 // ==========================================
 function getValidAuthToken(interactive = false) {
   return new Promise((resolve, reject) => {
     chrome.storage.local.get(["authToken"], (res) => {
       if (res.authToken) {
         resolve(res.authToken);
-      } else {
+      } else if (interactive) {
         fetchNewToken(interactive, resolve, reject);
+      } else {
+        reject("No saved authorization token available.");
       }
     });
   });
@@ -140,31 +142,17 @@ async function authenticatedFetch(url, options = {}) {
   return new Promise((resolve, reject) => {
     chrome.storage.local.get(["authToken"], async (res) => {
       let token = res.authToken;
-
-      // 1. If no token exists, attempt silent retrieval immediately
       if (!token) {
-        try {
-          token = await new Promise((resToken, rejToken) => fetchNewToken(false, resToken, rejToken));
-        } catch (silentErr) {
-          return reject("No valid authorization token available.");
-        }
+        return reject("No authorization token saved in storage.");
       }
 
       options.headers = { ...options.headers, "Authorization": `Bearer ${token}` };
 
       try {
         let response = await fetch(url, options);
-
-        // 2. If token expired (401), clear local token and execute ONE silent refresh retry
         if (response.status === 401) {
           chrome.storage.local.remove(["authToken"]);
-          try {
-            const freshToken = await new Promise((resToken, rejToken) => fetchNewToken(false, resToken, rejToken));
-            options.headers["Authorization"] = `Bearer ${freshToken}`;
-            response = await fetch(url, options);
-          } catch (retryErr) {
-            return reject("Auth token expired and silent refresh failed.");
-          }
+          return reject("Auth token expired or revoked.");
         }
         resolve(response);
       } catch (err) { reject(err); }
@@ -286,9 +274,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 async function checkAndSendWeeklyDigest() {
   chrome.storage.local.get([
-    "userName", "partnerName", "partnerEmail", "driveFileId", "lastWeeklyDigestSentAt"
+    "userName", "partnerName", "partnerEmail", "driveFileId", "lastWeeklyDigestSentAt", "authToken"
   ], async (data) => {
-    if (!data.partnerEmail || !data.driveFileId) return;
+    if (!data.authToken || !data.partnerEmail || !data.driveFileId) return;
 
     const now = Date.now();
     const lastSent = data.lastWeeklyDigestSentAt || 0;
@@ -300,6 +288,15 @@ async function checkAndSendWeeklyDigest() {
 }
 
 async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
+  const hasToken = await new Promise((res) => {
+    chrome.storage.local.get(["authToken"], (data) => res(Boolean(data.authToken)));
+  });
+
+  if (!hasToken) {
+    console.warn("Report snapshot dispatch skipped: No valid OAuth token available.");
+    return;
+  }
+
   try {
     const { key, keyHex } = await getActiveEncryptionKey();
     const res = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${profileData.driveFileId}?alt=media`);
@@ -415,7 +412,7 @@ async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
 }
 
 // ==========================================
-// 3. DRIVE JSON SYNC ENGINE (SAFE MULTI-DEVICE & READ-ONLY LOOKUP)
+// 3. DRIVE JSON SYNC ENGINE
 // ==========================================
 function flushBufferToDriveJson() {
   chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
@@ -426,10 +423,10 @@ function flushBufferToDriveJson() {
       timestamp: getCleanTimestamp()
     });
 
-    chrome.storage.local.get({ logBuffer: [], driveFileId: "" }, (result) => {
+    chrome.storage.local.get({ logBuffer: [], driveFileId: "", authToken: "" }, (result) => {
       const buffer = result.logBuffer;
       let driveFileId = result.driveFileId;
-      if (buffer.length === 0) return;
+      if (buffer.length === 0 || !result.authToken) return;
 
       let uniqueLogs = Array.from(new Set(buffer.map(a => a.url || a.timestamp))).map(key => buffer.find(a => (a.url || a.timestamp) === key));
 
@@ -444,7 +441,6 @@ function flushBufferToDriveJson() {
   });
 }
 
-// Background script only LOOKS for an existing file. NEVER creates one.
 function findDriveJsonFileOnly(callback) {
   const query = encodeURIComponent("name = 'virtue_logs.json' and trashed = false");
   authenticatedFetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`)
@@ -461,7 +457,6 @@ function findDriveJsonFileOnly(callback) {
     .catch(() => callback(null));
 }
 
-// Safe multi-browser log sync with ETag precondition handling & deduplicated set-merging
 function syncLogsToDriveFile(fileId, newLogs) {
   authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { "Cache-Control": "no-cache" }
@@ -483,7 +478,6 @@ function syncLogsToDriveFile(fileId, newLogs) {
     } catch (e) {}
 
     chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "userEmail"], async (localProfile) => {
-      // Merge unique entries across devices using a timestamp/URL key
       const logMap = new Map();
       [...existingLogs, ...newLogs].forEach(log => {
         const uniqueKey = `${log.timestamp}_${log.url || log.type || ''}`;
@@ -533,7 +527,6 @@ function syncLogsToDriveFile(fileId, newLogs) {
       })
       .then(uploadRes => {
         if (uploadRes.status === 412) {
-          // ETag conflict (another browser wrote first). Wait randomly and retry merge.
           const randomJitter = Math.floor(Math.random() * 500) + 200;
           setTimeout(() => syncLogsToDriveFile(fileId, newLogs), randomJitter);
         } else if (uploadRes.ok) {
@@ -544,7 +537,6 @@ function syncLogsToDriveFile(fileId, newLogs) {
     });
   })
   .catch(err => {
-    // Retain driveFileId so we never accidentally orphan or re-query destructively
     console.warn("Sync fetch error:", err);
   });
 }
@@ -575,14 +567,11 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
         });
       };
 
-      // 1. Custom Whitelist
       if (settings.filterMode === "whitelist") {
         shouldBlock = !matchesCustomList(settings.customWhitelist);
       } else {
-        // 2. Custom Blacklist
         const inCustomBlacklist = matchesCustomList(settings.customBlacklist);
 
-        // 3. Static Domain Blocklist
         let inStaticShield = false;
         const parts = hostname.split('.');
         for (let i = 0; i < parts.length - 1; i++) {
@@ -595,7 +584,6 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 
         shouldBlock = inCustomBlacklist || inStaticShield || isYahooMediaLeak;
 
-        // 4. Keyword & Regex Pattern Match
         if (!shouldBlock) {
           const cleanUrlStr = sanitizeStringForTesting(urlStr).toLowerCase();
           const rawQuery = searchQuery ? searchQuery.toLowerCase() : "";
@@ -628,7 +616,7 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 });
 
 // ==========================================
-// 5. GENERAL NAVIGATION LOGGING (SAFE TAB LOOKUPS)
+// 5. GENERAL NAVIGATION LOGGING
 // ==========================================
 function processNavigation(url, tabId) {
   if (!url.startsWith("http://") && !url.startsWith("https://")) return;
@@ -641,7 +629,6 @@ function processNavigation(url, tabId) {
     const searchQuery = extractSearchQuery(url);
     const cleanLocalTime = getCleanTimestamp();
 
-    // Prevent duplicate logging of identical search queries within 5 seconds
     if (searchQuery) {
       const now = Date.now();
       if (
@@ -668,9 +655,7 @@ function processNavigation(url, tabId) {
       timestamp: cleanLocalTime,
       flagged: finalUrl.includes("[BLOCKED]")
     });
-  }).catch(() => {
-    // Safely ignore tab lookups if tab closes before promise resolves
-  });
+  }).catch(() => {});
 }
 
 chrome.webNavigation.onCompleted.addListener((details) => {
