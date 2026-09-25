@@ -9,6 +9,7 @@
     "tabs",
     "alarms",
     "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess",
     "identity"
   ],
   "host_permissions": [
@@ -35,14 +36,6 @@
     "32": "icons/Virtue_icon.png",
     "48": "icons/Virtue_icon.png",
     "128": "icons/Virtue_icon.png"
-  },
-  "oauth2": {
-    "client_id": "369511086314-iscotke4957avqtei6dr7j1mpkn613oe.apps.googleusercontent.com",
-    "scopes": [
-      "https://www.googleapis.com/auth/drive.file",
-      "https://www.googleapis.com/auth/gmail.send",
-      "https://www.googleapis.com/auth/userinfo.email"
-    ]
   },
   "web_accessible_resources": [
     {

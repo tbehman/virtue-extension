@@ -2,15 +2,14 @@
 // cryptoUtils.js - Web Crypto API (PBKDF2 + AES-GCM) Helpers
 // ============================================================
 
-/**
- * Derives a 256-bit CryptoKey using PBKDF2 from a 4-digit PIN and user email.
- * @param {string} pin - User's 4-digit PIN (e.g., "1234")
- * @param {string} email - User's Google Account Email (used as salt)
- * @returns {Promise<{ key: CryptoKey, keyHex: string }>} Derived key and hex representation
- */
+function normalizeAuthInputs(pin, email) {
+  const cleanPin = String(pin || "1234").trim();
+  const cleanEmail = String(email || "virtue_default_salt").toLowerCase().trim();
+  return { cleanPin, cleanEmail };
+}
+
 export async function deriveKeyFromPin(pin, email) {
-  const cleanPin = (pin || "1234").trim();
-  const cleanSalt = (email || "virtue_default_salt").toLowerCase().trim();
+  const { cleanPin, cleanEmail } = normalizeAuthInputs(pin, email);
 
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
@@ -24,7 +23,7 @@ export async function deriveKeyFromPin(pin, email) {
   const derivedKey = await crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt: encoder.encode(cleanSalt),
+      salt: encoder.encode(cleanEmail),
       iterations: 100000,
       hash: "SHA-256"
     },
@@ -34,7 +33,6 @@ export async function deriveKeyFromPin(pin, email) {
     ["encrypt", "decrypt"]
   );
 
-  // Export raw bytes as Hex string for inclusion in URL fragment hash
   const rawBits = await crypto.subtle.exportKey("raw", derivedKey);
   const keyHex = Array.from(new Uint8Array(rawBits))
     .map(b => b.toString(16).padStart(2, "0"))
@@ -43,11 +41,23 @@ export async function deriveKeyFromPin(pin, email) {
   return { key: derivedKey, keyHex };
 }
 
-/**
- * Imports a raw 64-character Hex string into a usable CryptoKey.
- * @param {string} hexKey - 64-char hex string from URL fragment
- * @returns {Promise<CryptoKey>}
- */
+export async function generatePinVerifier(pin, email) {
+  const { cleanPin, cleanEmail } = normalizeAuthInputs(pin, email);
+  const encoder = new TextEncoder();
+  const data = encoder.encode(`${cleanPin}:${cleanEmail}:virtue_verifier_salt`);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export async function verifyPinHash(enteredPin, email, storedVerifier) {
+  if (!storedVerifier) return true;
+  const generated = await generatePinVerifier(enteredPin, email);
+  return generated === storedVerifier;
+}
+
 export async function importKeyFromHex(hexKey) {
   const bytes = new Uint8Array(
     hexKey.match(/.{1,2}/g).map(byte => parseInt(byte, 16))
@@ -62,15 +72,9 @@ export async function importKeyFromHex(hexKey) {
   );
 }
 
-/**
- * Encrypts a JS Object using AES-GCM.
- * @param {Object|Array} data - Data to encrypt
- * @param {CryptoKey} key - AES-GCM CryptoKey
- * @returns {Promise<{ ciphertext: string, iv: string }>} Base64-encoded encrypted payload and IV
- */
 export async function encryptData(data, key) {
   const encoder = new TextEncoder();
-  const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit initialization vector
+  const iv = crypto.getRandomValues(new Uint8Array(12));
   const encodedData = encoder.encode(JSON.stringify(data));
 
   const encryptedBuffer = await crypto.subtle.encrypt(
@@ -85,13 +89,6 @@ export async function encryptData(data, key) {
   };
 }
 
-/**
- * Decrypts an AES-GCM payload back into a JS Object.
- * @param {string} ciphertextBase64 - Base64 encoded ciphertext
- * @param {string} ivBase64 - Base64 encoded initialization vector
- * @param {CryptoKey} key - AES-GCM CryptoKey
- * @returns {Promise<Object|Array>} Decrypted JSON object
- */
 export async function decryptData(ciphertextBase64, ivBase64, key) {
   const ciphertext = base64ToBuffer(ciphertextBase64);
   const iv = base64ToBuffer(ivBase64);
@@ -106,7 +103,6 @@ export async function decryptData(ciphertextBase64, ivBase64, key) {
   return JSON.parse(decoder.decode(decryptedBuffer));
 }
 
-// Helpers for ArrayBuffer <-> Base64 conversion
 function bufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
   let binary = "";
