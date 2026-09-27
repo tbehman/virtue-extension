@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw+VZCegadBdzWs0mPUGbUiWcXX3vQnCLbDn6v1sHV6d90SW8iejdsj0hRQKci7hKfN/vT6zu3zfe4hPqSLq1EFqMaqvm+afUWWnXgfisx75uoMFjYrv6K6dKIm9pWcQKlNdyRlWoe8wqykXSZfV7TJGuC2PW+72TfsY3dzJbbm7f9fpE5o66BqBP31rQagoUf9ry4ddIHFXci2PCC5zQWaBMTJ2mCT/GEe58copDkm34l+NOyL0us/KBzqU2WyQ/jaFyRqVEPYQfURadEy8ffhNTu1rho0CeeC95gl+tdZgyT0+jUtYlMf/OoJUBNhoTTYe3vU6AFe6J4xsqzzO7XwIDAQAB",
   "name": "Virtue",
   "version": "1.0",
   "description": "Transparent web accountability and search telemetry using Google Drive and live web dashboards.",
@@ -19,7 +20,7 @@
     "https://gmail.googleapis.com/*"
   ],
   "oauth2": {
-    "client_id": "369511086314-8queep6f1a9ki2n2jsvtajv1i3iekcrp.apps.googleusercontent.com",
+    "client_id": "369511086314-31p73ik75a1boo0gkef1dj5sfo9j93bs.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/drive.file",
       "https://www.googleapis.com/auth/gmail.send",

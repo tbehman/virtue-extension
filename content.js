@@ -1,12 +1,4 @@
-// Listen for messages from background.js
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.type === "SHOW_REAUTH_BANNER") {
-    injectReauthBanner();
-  } else if (request.type === "HIDE_REAUTH_BANNER") {
-    removeReauthBanner();
-  }
-});
-
+// Inject Re-Auth Failure Banner safely without triggering context errors
 function injectReauthBanner() {
   if (document.getElementById("virtue-reauth-banner")) return;
 
@@ -19,17 +11,17 @@ function injectReauthBanner() {
     width: 100%;
     background-color: #dc3545;
     color: #ffffff;
+    text-align: center;
+    padding: 10px 15px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 14px;
     font-weight: 600;
-    padding: 12px 16px;
-    text-align: center;
     z-index: 2147483647;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 12px;
+    gap: 15px;
   `;
 
   banner.innerHTML = `
@@ -39,18 +31,28 @@ function injectReauthBanner() {
       color: #dc3545;
       border: none;
       padding: 6px 14px;
-      font-size: 13px;
-      font-weight: bold;
       border-radius: 4px;
+      font-weight: bold;
       cursor: pointer;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      font-size: 13px;
+      transition: opacity 0.2s;
     ">Reconnect Now ➔</button>
   `;
 
   document.body.prepend(banner);
 
   document.getElementById("virtue-reauth-btn").addEventListener("click", () => {
-    chrome.runtime.sendMessage({ type: "TRIGGER_INTERACTIVE_AUTH" });
+    try {
+      chrome.runtime.sendMessage({ type: "TRIGGER_INTERACTIVE_AUTH" }, (response) => {
+        if (chrome.runtime.lastError) {
+          // Extension was reloaded/updated; refresh page to re-establish connection
+          window.location.reload();
+        }
+      });
+    } catch (e) {
+      // Catch "Extension context invalidated" gracefully
+      window.location.reload();
+    }
   });
 }
 
@@ -58,3 +60,12 @@ function removeReauthBanner() {
   const banner = document.getElementById("virtue-reauth-banner");
   if (banner) banner.remove();
 }
+
+// Safely listen for background commands
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.type === "SHOW_REAUTH_BANNER") {
+    injectReauthBanner();
+  } else if (request.type === "HIDE_REAUTH_BANNER") {
+    removeReauthBanner();
+  }
+});

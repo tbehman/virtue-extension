@@ -153,7 +153,7 @@ function fetchNewToken(interactive, resolve, reject) {
       }
     });
   } else {
-    // Chrome Path: Native August getAuthToken Engine
+    // Chrome Path: Native Chrome getAuthToken
     chrome.identity.getAuthToken({ interactive }, (newToken) => {
       if (chrome.runtime.lastError || !newToken) {
         return reject(chrome.runtime.lastError?.message || "Failed to retrieve token");
@@ -163,54 +163,45 @@ function fetchNewToken(interactive, resolve, reject) {
   }
 }
 
-function getValidAuthToken(interactive = false) {
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.get(["authToken"], (res) => {
-      const oldToken = res.authToken;
-      if (oldToken && !isMicrosoftEdge()) {
-        chrome.identity.removeCachedAuthToken({ token: oldToken }, () => {
-          chrome.storage.local.remove(["authToken"], () => {
-            fetchNewToken(interactive, resolve, reject);
-          });
-        });
-      } else {
-        fetchNewToken(interactive, resolve, reject);
-      }
-    });
-  });
-}
-
 async function authenticatedFetch(url, options = {}) {
   return new Promise((resolve, reject) => {
-    chrome.storage.local.get(["authToken"], async (res) => {
-      let token = res.authToken;
-
-      if (!token) {
-        try {
-          token = await new Promise((resToken, rejToken) => fetchNewToken(false, resToken, rejToken));
-        } catch (silentErr) {
-          notifyActiveTabOfAuthFailure();
-          return reject("No valid authorization token available.");
-        }
-      }
-
+    fetchNewToken(false, async (token) => {
       options.headers = { ...options.headers, "Authorization": `Bearer ${token}` };
 
       try {
         let response = await fetch(url, options);
 
         if (response.status === 401) {
-          try {
-            const freshToken = await getValidAuthToken(false);
-            options.headers["Authorization"] = `Bearer ${freshToken}`;
-            response = await fetch(url, options);
-          } catch (retryErr) {
-            notifyActiveTabOfAuthFailure();
-            return reject("Auth token expired and silent refresh failed.");
+          if (!isMicrosoftEdge()) {
+            chrome.identity.removeCachedAuthToken({ token }, () => {
+              fetchNewToken(false, async (newToken) => {
+                options.headers["Authorization"] = `Bearer ${newToken}`;
+                const retryResponse = await fetch(url, options);
+                if (retryResponse.ok) {
+                  clearAuthFailureBanner();
+                  return resolve(retryResponse);
+                }
+                notifyActiveTabOfAuthFailure();
+                reject("Unauthorized after silent retry");
+              }, (err) => {
+                notifyActiveTabOfAuthFailure();
+                reject(err);
+              });
+            });
+            return;
           }
+          notifyActiveTabOfAuthFailure();
+          return reject("Unauthorized");
         }
+
+        clearAuthFailureBanner();
         resolve(response);
-      } catch (err) { reject(err); }
+      } catch (err) {
+        reject(err);
+      }
+    }, (err) => {
+      notifyActiveTabOfAuthFailure();
+      reject(err);
     });
   });
 }
