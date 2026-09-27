@@ -102,12 +102,16 @@ function base64EncodeUtf8(str) {
 }
 
 // ==========================================
-// 1. DUAL-ENGINE AUTHENTICATION ROUTER (CODE FLOW + REFRESH TOKEN)
+// 1. DUAL-ENGINE AUTHENTICATION ROUTER
 // ==========================================
 function notifyActiveTabOfAuthFailure() {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0]?.id) {
-      chrome.tabs.sendMessage(tabs[0].id, { type: "SHOW_REAUTH_BANNER" }).catch(() => {});
+    if (tabs[0]?.id && tabs[0].url?.startsWith("http")) {
+      chrome.tabs.sendMessage(tabs[0].id, { type: "SHOW_REAUTH_BANNER" }, () => {
+        if (chrome.runtime.lastError) {
+          // Intentionally catch missing content script receiver
+        }
+      });
     }
   });
 }
@@ -115,91 +119,62 @@ function notifyActiveTabOfAuthFailure() {
 function clearAuthFailureBanner() {
   chrome.tabs.query({}, (tabs) => {
     tabs.forEach(tab => {
-      chrome.tabs.sendMessage(tab.id, { type: "HIDE_REAUTH_BANNER" }).catch(() => {});
+      if (tab.id && tab.url?.startsWith("http")) {
+        chrome.tabs.sendMessage(tab.id, { type: "HIDE_REAUTH_BANNER" }, () => {
+          if (chrome.runtime.lastError) {
+            // Intentionally catch missing content script receiver
+          }
+        });
+      }
     });
   });
 }
 
-async function refreshAccessTokenSilently(refreshToken) {
-  const response = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      grant_type: "refresh_token",
-      refresh_token: refreshToken
-    })
-  });
-
-  const data = await response.json();
-  if (!response.ok || !data.access_token) {
-    throw new Error(data.error_description || "Failed to refresh access token");
-  }
-
-  await chrome.storage.local.set({ authToken: data.access_token });
-  return data.access_token;
-}
-
 function fetchNewToken(interactive, resolve, reject) {
-  chrome.storage.local.get(["refreshToken"], async (res) => {
-    // 1. SILENT REFRESH: If not interactive and we hold a refresh token, fetch access token directly via API
-    if (!interactive && res.refreshToken) {
-      try {
-        const newToken = await refreshAccessTokenSilently(res.refreshToken);
-        return resolve(newToken);
-      } catch (err) {
-        console.warn("Silent refresh token exchange failed, requiring interactive re-auth:", err);
-      }
-    }
-
-    // 2. INTERACTIVE AUTHENTICATION: Request authorization code with offline access
+  if (isMicrosoftEdge()) {
+    // Edge Path: Web Auth Flow
     const redirectUri = chrome.identity.getRedirectURL();
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
       `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}&` +
-      `response_type=code&` +
-      `access_type=offline&` +
-      `prompt=consent&` +
+      `response_type=token&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
       `scope=${encodeURIComponent(OAUTH_SCOPES.join(" "))}`;
 
-    chrome.identity.launchWebAuthFlow({ url: authUrl, interactive: true }, async (redirectUrl) => {
+    chrome.identity.launchWebAuthFlow({ url: authUrl, interactive }, (redirectUrl) => {
       if (chrome.runtime.lastError || !redirectUrl) {
-        return reject(chrome.runtime.lastError?.message || "Failed to launch auth flow");
+        return reject(chrome.runtime.lastError?.message || "Failed to retrieve token");
       }
-
-      const urlParams = new URL(redirectUrl.replace("#", "?")).searchParams;
-      const code = urlParams.get("code");
-
-      if (!code) {
-        return reject("No authorization code received from Google");
+      const matches = redirectUrl.match(/access_token=([^&]+)/);
+      const token = matches ? matches[1] : null;
+      if (token) {
+        chrome.storage.local.set({ authToken: token }, () => resolve(token));
+      } else {
+        reject("Token parsing failed");
       }
+    });
+  } else {
+    // Chrome Path: Native August getAuthToken Engine
+    chrome.identity.getAuthToken({ interactive }, (newToken) => {
+      if (chrome.runtime.lastError || !newToken) {
+        return reject(chrome.runtime.lastError?.message || "Failed to retrieve token");
+      }
+      chrome.storage.local.set({ authToken: newToken }, () => resolve(newToken));
+    });
+  }
+}
 
-      try {
-        // Exchange authorization code for initial Access Token AND permanent Refresh Token
-        const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            client_id: GOOGLE_CLIENT_ID,
-            grant_type: "authorization_code",
-            code: code,
-            redirect_uri: redirectUri
-          })
+function getValidAuthToken(interactive = false) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(["authToken"], (res) => {
+      const oldToken = res.authToken;
+      if (oldToken && !isMicrosoftEdge()) {
+        chrome.identity.removeCachedAuthToken({ token: oldToken }, () => {
+          chrome.storage.local.remove(["authToken"], () => {
+            fetchNewToken(interactive, resolve, reject);
+          });
         });
-
-        const tokenData = await tokenRes.json();
-        if (!tokenRes.ok || !tokenData.access_token) {
-          return reject(tokenData.error_description || "Token exchange failed");
-        }
-
-        const storageUpdates = { authToken: tokenData.access_token };
-        if (tokenData.refresh_token) {
-          storageUpdates.refreshToken = tokenData.refresh_token;
-        }
-
-        chrome.storage.local.set(storageUpdates, () => resolve(tokenData.access_token));
-      } catch (exchangeErr) {
-        reject(exchangeErr.message || exchangeErr);
+      } else {
+        fetchNewToken(interactive, resolve, reject);
       }
     });
   });
@@ -225,9 +200,8 @@ async function authenticatedFetch(url, options = {}) {
         let response = await fetch(url, options);
 
         if (response.status === 401) {
-          chrome.storage.local.remove(["authToken"]);
           try {
-            const freshToken = await new Promise((resToken, rejToken) => fetchNewToken(false, resToken, rejToken));
+            const freshToken = await getValidAuthToken(false);
             options.headers["Authorization"] = `Bearer ${freshToken}`;
             response = await fetch(url, options);
           } catch (retryErr) {
@@ -845,9 +819,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (token) {
         fetch(`https://accounts.google.com/o/oauth2/revoke?token=${token}`)
           .finally(() => {
-            chrome.storage.local.remove(["authToken", "refreshToken", "driveFileId", "userEmail"], () => {
-              sendResponse({ success: true });
-            });
+            const clearStorageAndRespond = () => {
+              chrome.storage.local.remove(["authToken", "refreshToken", "driveFileId", "userEmail"], () => {
+                sendResponse({ success: true });
+              });
+            };
+
+            if (!isMicrosoftEdge()) {
+              chrome.identity.removeCachedAuthToken({ token }, clearStorageAndRespond);
+            } else {
+              clearStorageAndRespond();
+            }
           });
       } else {
         chrome.storage.local.remove(["authToken", "refreshToken", "driveFileId", "userEmail"], () => {
