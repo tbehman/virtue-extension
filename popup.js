@@ -70,15 +70,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let discoveredProfile = null;
   let isAuthenticating = false;
 
+  const LOG_FILE_NAME = "virtue_logs_v1.json";
   const GITHUB_DASHBOARD_BASE_URL = "https://tbehman.github.io/virtue-extension/";
-  
-  // Google OAuth Configuration
-  const GOOGLE_CLIENT_ID = "369511086314-8queep6f1a9ki2n2jsvtajv1i3iekcrp.apps.googleusercontent.com";
-  const OAUTH_SCOPES = [
-    "https://www.googleapis.com/auth/drive.file",
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/userinfo.email"
-  ];
 
   function toggleHidden(element, isHidden) {
     if (!element) return;
@@ -107,8 +100,6 @@ document.addEventListener("DOMContentLoaded", () => {
       cachedPin = storageData.userPin || "";
       activeFilterMode = storageData.filterMode || "blocklist";
 
-      // FIXED: Check userPin AND driveFileId to determine setup state.
-      // Do NOT rely solely on authToken, which expires every 60 mins.
       const isConfigured = Boolean(storageData.userPin && storageData.driveFileId);
 
       if (!isConfigured) {
@@ -203,9 +194,9 @@ document.addEventListener("DOMContentLoaded", () => {
   if (refreshAccountBtn) {
     refreshAccountBtn.addEventListener("click", () => {
       if (accountDisplay) accountDisplay.textContent = "Loading...";
-      chrome.storage.local.get(["authToken"], (data) => {
-        if (data && data.authToken) {
-          fetchGoogleUserEmail(data.authToken, (email) => {
+      chrome.identity.getAuthToken({ interactive: false }, (token) => {
+        if (token) {
+          fetchGoogleUserEmail(token, (email) => {
             if (accountDisplay) accountDisplay.textContent = email || "Connected";
           });
         }
@@ -220,7 +211,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ==========================================
-  // 2. GOOGLE AUTHENTICATION & VAULT DISCOVERY
+  // 2. NATIVE CHROME AUTH & VAULT DISCOVERY
   // ==========================================
   if (authGoogleBtn) {
     authGoogleBtn.addEventListener("click", () => {
@@ -228,37 +219,18 @@ document.addEventListener("DOMContentLoaded", () => {
       isAuthenticating = true;
 
       if (status) {
-        status.style.color = "#4285F4";
-        status.textContent = "Authenticating Google Account...";
+        status.style.color = "#198754";
+        status.textContent = "Authenticating with Google...";
       }
       authGoogleBtn.disabled = true;
 
-      const redirectUri = chrome.identity.getRedirectURL();
-      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-        `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}&` +
-        `response_type=token&` +
-        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-        `scope=${encodeURIComponent(OAUTH_SCOPES.join(" "))}`;
-
-      chrome.identity.launchWebAuthFlow({ url: authUrl, interactive: true }, (redirectUrl) => {
+      chrome.identity.getAuthToken({ interactive: true }, (token) => {
         isAuthenticating = false;
 
-        if (chrome.runtime.lastError || !redirectUrl) {
+        if (chrome.runtime.lastError || !token) {
           if (status) {
             status.style.color = "#d93025";
             status.textContent = "Connection failed: " + (chrome.runtime.lastError?.message || "User canceled authentication");
-          }
-          authGoogleBtn.disabled = false;
-          return;
-        }
-
-        const matches = redirectUrl.match(/access_token=([^&]+)/);
-        const token = matches ? matches[1] : null;
-
-        if (!token) {
-          if (status) {
-            status.style.color = "#d93025";
-            status.textContent = "Authentication failed: Invalid OAuth token returned";
           }
           authGoogleBtn.disabled = false;
           return;
@@ -305,7 +277,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function inspectDriveForVault(token, callback) {
-    const query = encodeURIComponent("name = 'virtue_logs.json' and trashed = false");
+    const query = encodeURIComponent(`name = '${LOG_FILE_NAME}' and trashed = false`);
     
     fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`, {
       headers: { "Authorization": `Bearer ${token}` }
@@ -344,14 +316,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (discoveredProfile) {
         if (status) {
-          status.style.color = "#4285F4";
+          status.style.color = "#198754";
           status.textContent = "Verifying Master PIN...";
         }
 
         const storedEmail = activeUserEmail || discoveredProfile.userEmail || "";
         const storedVerifier = discoveredProfile.pinVerifier || null;
 
-        // Verify PIN against vault verifier hash
         const isValidPin = await verifyPinHash(pin, storedEmail, storedVerifier);
 
         if (!isValidPin) {
@@ -398,7 +369,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         if (status) {
-          status.style.color = "#4285F4";
+          status.style.color = "#198754";
           status.textContent = "Creating secure Google Drive vault...";
         }
 
@@ -431,7 +402,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function createNewDriveVault(token, profile, callback) {
-    const metadata = { name: "virtue_logs.json", mimeType: "application/json" };
+    const metadata = { name: LOG_FILE_NAME, mimeType: "application/json" };
     const initialContent = JSON.stringify({
       metadata: {
         version: "1.0",

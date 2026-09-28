@@ -645,18 +645,19 @@
       const heartbeats = allLogs.filter(log => log.type === "HEARTBEAT");
       globalBrowsingLogs = allLogs.filter(log => log.type !== "HEARTBEAT" && log.type !== "AUDIT");
 
-      globalBrowsingLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      // Sort by numeric timestamp (t)
+      globalBrowsingLogs.sort((a, b) => (b.t || 0) - (a.t || 0));
 
       const profileName = metadata.userName || "User";
       if (globalBrowsingLogs.length > 0) {
-        const oldest = new Date(globalBrowsingLogs[globalBrowsingLogs.length - 1].timestamp);
-        const newest = new Date(globalBrowsingLogs[0].timestamp);
+        const oldest = new Date(globalBrowsingLogs[globalBrowsingLogs.length - 1].t);
+        const newest = new Date(globalBrowsingLogs[0].t);
         document.getElementById("dashboardSubheader").textContent = "Accountability Report for " + profileName + " • " + formatDateShort(oldest) + " – " + formatDateShort(newest);
       }
 
+      // Check for overrides via numeric flag or title indicator
       const ignoredWarningLogs = globalBrowsingLogs.filter(log => 
-        (log.title && log.title.includes("[VISITED]")) || 
-        (log.url && log.url.includes("virtue_bypass=true"))
+        log.flag === 1 || (log.title && log.title.includes("[VISITED]")) || (log.url && log.url.includes("virtue_bypass=true"))
       );
 
       const statusBanner = document.getElementById("statusBanner");
@@ -686,14 +687,15 @@
       }
 
       globalBrowsingLogs.forEach(log => {
-        const logDate = new Date(log.timestamp);
+        const logDate = new Date(log.t);
         if (!isNaN(logDate)) {
           const dateStr = logDate.toDateString();
           activeDaysSet.add(dateStr);
           if (dailyCounts[dateStr] !== undefined) dailyCounts[dateStr]++;
         }
 
-        if (log.searchQuery && log.searchQuery.trim() !== "" && log.searchQuery.trim().toUpperCase() !== "N/A") {
+        // Search terms stored in key "q"
+        if (log.q && log.q.trim() !== "" && log.q.trim().toUpperCase() !== "N/A") {
           globalSearches.push(log);
         }
 
@@ -710,7 +712,7 @@
       if (ignoredWarningLogs.length > 0) flaggedEl.classList.add("danger");
       else flaggedEl.classList.remove("danger");
 
-      const uniqueSearches = new Set(globalSearches.map(l => l.searchQuery.trim().toLowerCase()));
+      const uniqueSearches = new Set(globalSearches.map(l => l.q.trim().toLowerCase()));
       document.getElementById("metricSearches").textContent = uniqueSearches.size;
       document.getElementById("metricDomains").textContent = Object.keys(domainCounts).length;
       document.getElementById("metricActiveDays").textContent = Math.min(activeDaysSet.size, 7) + " / 7";
@@ -740,8 +742,8 @@
 
       const displayList = showAllSearches ? globalSearches : globalSearches.slice(0, 10);
       searchQueryTable.innerHTML = displayList.map(log => 
-        '<tr><td style="white-space: nowrap; color: var(--text-muted); font-size: 12px;">' + formatTime(log.timestamp) + '</td>' +
-        '<td style="font-weight: 600; color: #202124;">"' + log.searchQuery + '"</td></tr>'
+        '<tr><td style="white-space: nowrap; color: var(--text-muted); font-size: 12px;">' + formatTime(log.t) + '</td>' +
+        '<td style="font-weight: 600; color: #202124;">"' + log.q + '"</td></tr>'
       ).join('');
 
       if (globalSearches.length > 10) {
@@ -764,17 +766,17 @@
 
       if (viewMode === "flat") {
         let rowsHtml = logsToRender.map(log => {
-          const isBypassed = (log.title && log.title.includes("[VISITED]")) || (log.url && log.url.includes("virtue_bypass=true"));
+          const isBypassed = log.flag === 1 || (log.title && log.title.includes("[VISITED]")) || (log.url && log.url.includes("virtue_bypass=true"));
           const statusBadge = isBypassed 
             ? '<span class="flag-badge">⚠️ Ignored Warning</span>' 
             : '<span style="color: #198754; font-size: 12px; font-weight: 500;">✓ Clear</span>';
           const deviceName = log.device || "Desktop";
-          const hasValidSearch = log.searchQuery && log.searchQuery.trim() !== "" && log.searchQuery.trim().toUpperCase() !== "N/A";
-          const searchSubline = hasValidSearch ? '<br><span style="font-size: 11px; color: #1a73e8; font-weight: 600;">🔍 "' + log.searchQuery + '"</span>' : '';
+          const hasValidSearch = log.q && log.q.trim() !== "";
+          const searchSubline = hasValidSearch ? '<br><span style="font-size: 11px; color: #1a73e8; font-weight: 600;">🔍 "' + log.q + '"</span>' : '';
           const displayTitle = log.title ? log.title : "Untitled";
 
           return '<tr style="' + (isBypassed ? 'background-color: #fffaf9;' : '') + '">' +
-            '<td style="white-space: nowrap; font-size: 12px; color: var(--text-muted);">' + formatTime(log.timestamp) + '</td>' +
+            '<td style="white-space: nowrap; font-size: 12px; color: var(--text-muted);">' + formatTime(log.t) + '</td>' +
             '<td><span class="device-badge">💻 ' + deviceName + '</span></td>' +
             '<td>' + statusBadge + '</td>' +
             '<td><div class="text-truncate" style="font-weight: 500;" title="' + displayTitle + '">' + displayTitle + '</div>' + searchSubline + '</td>' +
@@ -800,7 +802,7 @@
 
         container.innerHTML = sortedGroups.map(([domain, items]) => {
           const listItems = items.map(item => 
-            '<li><span style="color: var(--text-muted); font-size: 11px;">[' + formatTime(item.timestamp) + ']</span> ' +
+            '<li><span style="color: var(--text-muted); font-size: 11px;">[' + formatTime(item.t) + ']</span> ' +
             '<a href="' + item.url + '" target="_blank" style="color: #1a73e8; text-decoration: none;">' + (item.title || item.url) + '</a></li>'
           ).join('');
 
@@ -826,7 +828,6 @@
       const endTime = endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const diffMin = Math.round((endDate - startDate) / 60000);
 
-      // Human-readable duration string calculation
       const totalHours = diffMin / 60;
       let durationStr = "";
 
@@ -846,7 +847,6 @@
         }
       }
 
-      // Multi-day span handling
       if (startDate.toDateString() !== endDate.toDateString()) {
         return '<strong>' + startDay + ', ' + startTime + '</strong> – <strong>' + endDay + ', ' + endTime + '</strong> (' + durationStr + ')';
       } else {
@@ -866,13 +866,13 @@
       let hasAuditNotice = false;
 
       Object.entries(devices).forEach(([devName, beats]) => {
-        beats.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        beats.sort((a, b) => (a.t || 0) - (b.t || 0));
 
         const unmonitoredWindows = [];
         let currentWindowStart = null;
 
         beats.forEach((hb, idx) => {
-          const hbTime = new Date(hb.timestamp);
+          const hbTime = new Date(hb.t);
 
           if (!hb.incognitoAllowed) {
             if (!currentWindowStart) {
@@ -894,7 +894,6 @@
           const hasActiveSession = unmonitoredWindows.some(w => w.end === null);
           const possessiveName = userName && userName !== "User" ? (userName.endsWith('s') ? userName + "'" : userName + "'s") : "the user's";
 
-          // DYNAMIC BROWSER UI VERBIAGE
           const isEdge = devName.includes("Edge");
           const modeTitle = isEdge ? "InPrivate" : "Incognito";
           const settingsUrl = isEdge ? "edge://extensions" : "chrome://extensions";
@@ -928,7 +927,7 @@
         noticeHtml += '<div class="audit-section"><div class="audit-section-title">🛑 Restricted Sites Visited (' + overrideCountText + ')</div><ul>';
 
         ignoredWarningLogs.forEach(log => {
-          const logDate = new Date(log.timestamp);
+          const logDate = new Date(log.t);
           const dateStr = logDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
           const timeStr = logDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const title = log.title ? log.title.replace("[VISITED]", "").trim() : "Untitled";
@@ -969,7 +968,7 @@
     }
 
     function formatDateShort(d) { return d.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
-    function formatTime(iso) { return iso ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' }) : "Unknown"; }
+    function formatTime(timestamp) { return timestamp ? new Date(timestamp).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' }) : "Unknown"; }
   </script>
 </body>
 </html>

@@ -2,16 +2,9 @@ import { DEFAULT_BLOCKLIST } from './defaultBlocklist.js';
 import { COMPILED_KEYWORD_REGEXES } from './defaultKeywords.js';
 import { deriveKeyFromPin, encryptData, decryptData } from './cryptoUtils.js';
 
+const LOG_FILE_NAME = "virtue_logs_v1.json";
 const SAFESEARCH_RULE_IDS = [101, 102, 103];
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-
-// Google OAuth Configuration
-const GOOGLE_CLIENT_ID = "369511086314-8queep6f1a9ki2n2jsvtajv1i3iekcrp.apps.googleusercontent.com";
-const OAUTH_SCOPES = [
-  "https://www.googleapis.com/auth/drive.file",
-  "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/userinfo.email"
-];
 
 // State guard for search query deduplication
 let lastLoggedSearch = { query: "", time: 0 };
@@ -19,14 +12,6 @@ let lastLoggedSearch = { query: "", time: 0 };
 // ==========================================
 // 0. UTILITIES & DEVICE IDENTIFICATION
 // ==========================================
-function isMicrosoftEdge() {
-  return navigator.userAgent.includes("Edg/");
-}
-
-function getCleanTimestamp() {
-  return new Date().toISOString();
-}
-
 function getDeviceInfo() {
   const ua = navigator.userAgent;
   let os = "Desktop";
@@ -36,8 +21,7 @@ function getDeviceInfo() {
   else if (ua.includes("Android")) os = "Android Phone";
   else if (ua.includes("iPhone") || ua.includes("iPad")) os = "iOS Device";
 
-  const browser = isMicrosoftEdge() ? "Edge" : "Chrome";
-  return `${os} (${browser})`;
+  return `${os} (Chrome)`;
 }
 
 // Helper to get active derived key for current user
@@ -102,14 +86,14 @@ function base64EncodeUtf8(str) {
 }
 
 // ==========================================
-// 1. DUAL-ENGINE AUTHENTICATION ROUTER
+// 1. CHROME NATIVE AUTHENTICATION ENGINE
 // ==========================================
 function notifyActiveTabOfAuthFailure() {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs[0]?.id && tabs[0].url?.startsWith("http")) {
       chrome.tabs.sendMessage(tabs[0].id, { type: "SHOW_REAUTH_BANNER" }, () => {
         if (chrome.runtime.lastError) {
-          // Intentionally catch missing content script receiver
+          // Catch missing content script receiver gracefully
         }
       });
     }
@@ -122,7 +106,7 @@ function clearAuthFailureBanner() {
       if (tab.id && tab.url?.startsWith("http")) {
         chrome.tabs.sendMessage(tab.id, { type: "HIDE_REAUTH_BANNER" }, () => {
           if (chrome.runtime.lastError) {
-            // Intentionally catch missing content script receiver
+            // Catch missing content script receiver gracefully
           }
         });
       }
@@ -131,36 +115,12 @@ function clearAuthFailureBanner() {
 }
 
 function fetchNewToken(interactive, resolve, reject) {
-  if (isMicrosoftEdge()) {
-    // Edge Path: Web Auth Flow
-    const redirectUri = chrome.identity.getRedirectURL();
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}&` +
-      `response_type=token&` +
-      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-      `scope=${encodeURIComponent(OAUTH_SCOPES.join(" "))}`;
-
-    chrome.identity.launchWebAuthFlow({ url: authUrl, interactive }, (redirectUrl) => {
-      if (chrome.runtime.lastError || !redirectUrl) {
-        return reject(chrome.runtime.lastError?.message || "Failed to retrieve token");
-      }
-      const matches = redirectUrl.match(/access_token=([^&]+)/);
-      const token = matches ? matches[1] : null;
-      if (token) {
-        chrome.storage.local.set({ authToken: token }, () => resolve(token));
-      } else {
-        reject("Token parsing failed");
-      }
-    });
-  } else {
-    // Chrome Path: Native Chrome getAuthToken
-    chrome.identity.getAuthToken({ interactive }, (newToken) => {
-      if (chrome.runtime.lastError || !newToken) {
-        return reject(chrome.runtime.lastError?.message || "Failed to retrieve token");
-      }
-      chrome.storage.local.set({ authToken: newToken }, () => resolve(newToken));
-    });
-  }
+  chrome.identity.getAuthToken({ interactive }, (newToken) => {
+    if (chrome.runtime.lastError || !newToken) {
+      return reject(chrome.runtime.lastError?.message || "Failed to retrieve token");
+    }
+    chrome.storage.local.set({ authToken: newToken }, () => resolve(newToken));
+  });
 }
 
 async function authenticatedFetch(url, options = {}) {
@@ -172,26 +132,22 @@ async function authenticatedFetch(url, options = {}) {
         let response = await fetch(url, options);
 
         if (response.status === 401) {
-          if (!isMicrosoftEdge()) {
-            chrome.identity.removeCachedAuthToken({ token }, () => {
-              fetchNewToken(false, async (newToken) => {
-                options.headers["Authorization"] = `Bearer ${newToken}`;
-                const retryResponse = await fetch(url, options);
-                if (retryResponse.ok) {
-                  clearAuthFailureBanner();
-                  return resolve(retryResponse);
-                }
-                notifyActiveTabOfAuthFailure();
-                reject("Unauthorized after silent retry");
-              }, (err) => {
-                notifyActiveTabOfAuthFailure();
-                reject(err);
-              });
+          chrome.identity.removeCachedAuthToken({ token }, () => {
+            fetchNewToken(false, async (newToken) => {
+              options.headers["Authorization"] = `Bearer ${newToken}`;
+              const retryResponse = await fetch(url, options);
+              if (retryResponse.ok) {
+                clearAuthFailureBanner();
+                return resolve(retryResponse);
+              }
+              notifyActiveTabOfAuthFailure();
+              reject("Unauthorized after silent retry");
+            }, (err) => {
+              notifyActiveTabOfAuthFailure();
+              reject(err);
             });
-            return;
-          }
-          notifyActiveTabOfAuthFailure();
-          return reject("Unauthorized");
+          });
+          return;
         }
 
         clearAuthFailureBanner();
@@ -346,8 +302,8 @@ async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
       logs = fileData.logs || [];
     }
 
-    const validSearches = logs.filter(l => l.searchQuery && l.searchQuery.trim() !== "" && l.searchQuery.trim().toUpperCase() !== "N/A");
-    const ignoredWarnings = logs.filter(l => (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
+    const validSearches = logs.filter(l => (l.q || l.searchQuery) && (l.q || l.searchQuery).trim() !== "" && (l.q || l.searchQuery).trim().toUpperCase() !== "N/A");
+    const ignoredWarnings = logs.filter(l => l.flag === 1 || (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
 
     const domainCounts = {};
     logs.forEach(l => {
@@ -372,7 +328,7 @@ async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
           <ul style="margin: 0; padding-left: 20px; color: #664d03; font-size: 13px;">
             ${ignoredWarnings.map(w => `
               <li style="margin-bottom: 6px;">
-                <strong>${new Date(w.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</strong> - 
+                <strong>${new Date(w.t || w.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</strong> - 
                 <em>"${w.title ? w.title.replace("[VISITED]", "").trim() : "Untitled"}"</em><br>
                 <a href="${w.url}" style="color: #664d03; word-break: break-all;">${w.url}</a>
               </li>
@@ -394,8 +350,8 @@ async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
     const searchRowsHtml = validSearches.length > 0
       ? validSearches.slice(0, 10).map(s => `
           <li style="margin-bottom: 6px; font-size: 13px; color: #212529;">
-            <strong>"${s.searchQuery}"</strong> 
-            <span style="color: #6c757d; font-size: 11px;">(${new Date(s.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })})</span>
+            <strong>"${s.q || s.searchQuery}"</strong> 
+            <span style="color: #6c757d; font-size: 11px;">(${new Date(s.t || s.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })})</span>
           </li>
         `).join('')
       : `<li style="font-size: 13px; color: #6c757d;">No search queries recorded</li>`;
@@ -449,15 +405,15 @@ async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
 }
 
 // ==========================================
-// 3. DRIVE JSON SYNC ENGINE (WITH BLOCKLIST SYNC)
+// 3. DRIVE JSON SYNC ENGINE (LEAN SCHEMA V1)
 // ==========================================
 function flushBufferToDriveJson() {
   chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
     addToBuffer({
+      t: Date.now(),
       type: "HEARTBEAT",
       incognitoAllowed: isAllowed,
-      device: getDeviceInfo(),
-      timestamp: getCleanTimestamp()
+      device: getDeviceInfo()
     });
 
     chrome.storage.local.get({ logBuffer: [], driveFileId: "" }, (result) => {
@@ -465,7 +421,7 @@ function flushBufferToDriveJson() {
       let driveFileId = result.driveFileId;
       if (buffer.length === 0) return;
 
-      let uniqueLogs = Array.from(new Set(buffer.map(a => a.url || a.timestamp))).map(key => buffer.find(a => (a.url || a.timestamp) === key));
+      let uniqueLogs = Array.from(new Set(buffer.map(a => a.url || a.t))).map(key => buffer.find(a => (a.url || a.t) === key));
 
       if (!driveFileId) {
         findDriveJsonFileOnly((fileId) => { 
@@ -479,7 +435,7 @@ function flushBufferToDriveJson() {
 }
 
 function findDriveJsonFileOnly(callback) {
-  const query = encodeURIComponent("name = 'virtue_logs.json' and trashed = false");
+  const query = encodeURIComponent(`name = '${LOG_FILE_NAME}' and trashed = false`);
   authenticatedFetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`)
     .then(res => res.json())
     .then(data => {
@@ -520,14 +476,15 @@ function syncLogsToDriveFile(fileId, newLogs) {
     ], async (localProfile) => {
       const logMap = new Map();
       [...existingLogs, ...newLogs].forEach(log => {
-        const uniqueKey = `${log.timestamp}_${log.url || log.type || ''}`;
+        const timestamp = log.t || log.timestamp;
+        const uniqueKey = `${timestamp}_${log.url || log.type || ''}`;
         logMap.set(uniqueKey, log);
       });
       const combined = Array.from(logMap.values());
 
       const cutoffTime = Date.now() - SEVEN_DAYS_MS;
       const rollingLogs = combined.filter(log => {
-        const logTime = new Date(log.timestamp).getTime();
+        const logTime = log.t || new Date(log.timestamp).getTime();
         return !isNaN(logTime) && logTime > cutoffTime;
       });
 
@@ -575,7 +532,7 @@ function syncLogsToDriveFile(fileId, newLogs) {
           customKeywords: activeKeywords,
           filterMode: activeFilterMode,
           settingsLastUpdated: activeSettingsTime,
-          lastUpdated: getCleanTimestamp()
+          lastUpdated: new Date().toISOString()
         },
         iv: encrypted.iv,
         encryptedData: encrypted.ciphertext
@@ -680,7 +637,7 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 });
 
 // ==========================================
-// 5. GENERAL NAVIGATION LOGGING
+// 5. GENERAL NAVIGATION LOGGING (LEAN SCHEMA V1)
 // ==========================================
 function processNavigation(url, tabId) {
   if (!url.startsWith("http://") && !url.startsWith("https://")) return;
@@ -691,7 +648,6 @@ function processNavigation(url, tabId) {
 
     let title = tab.title || "";
     const searchQuery = extractSearchQuery(url);
-    const cleanLocalTime = getCleanTimestamp();
 
     if (searchQuery) {
       const now = Date.now();
@@ -706,18 +662,22 @@ function processNavigation(url, tabId) {
 
     if (tab.incognito) { title = `[INCOGNITO] ${title}`; }
     let finalUrl = url;
+    let isBypassed = false;
+
     if (url.includes("virtue_bypass=true")) {
       finalUrl = url.replace(/[?&]virtue_bypass=true/, "");
       title = `[VISITED] ${title}`;
+      isBypassed = true;
     }
 
     addToBuffer({
-      url: finalUrl,
-      title: title || "Untitled Page",
-      searchQuery: searchQuery || "",
-      device: getDeviceInfo(),
-      timestamp: cleanLocalTime,
-      flagged: finalUrl.includes("[BLOCKED]")
+      t: Date.now(),
+      type: "PAGE_VISIT",
+      title: title ? title.slice(0, 150) : "Untitled Page",
+      url: finalUrl ? finalUrl.slice(0, 500) : "",
+      q: searchQuery ? searchQuery.trim() : "",
+      flag: isBypassed ? 1 : 0,
+      device: getDeviceInfo()
     });
   }).catch(() => {});
 }
@@ -816,11 +776,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               });
             };
 
-            if (!isMicrosoftEdge()) {
-              chrome.identity.removeCachedAuthToken({ token }, clearStorageAndRespond);
-            } else {
-              clearStorageAndRespond();
-            }
+            chrome.identity.removeCachedAuthToken({ token }, clearStorageAndRespond);
           });
       } else {
         chrome.storage.local.remove(["authToken", "refreshToken", "driveFileId", "userEmail"], () => {
