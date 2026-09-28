@@ -83,7 +83,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ==========================================
-  // 1. INITIALIZATION ENGINE
+  // 1. INITIALIZATION ENGINE (SILENT AUTH RESTORED)
   // ==========================================
   function init() {
     chrome.storage.local.get([
@@ -103,31 +103,58 @@ document.addEventListener("DOMContentLoaded", () => {
       const isConfigured = Boolean(storageData.userPin && storageData.driveFileId);
 
       if (!isConfigured) {
-        toggleHidden(setupScreen, false);
-        toggleHidden(dashboardScreen, true);
-        toggleHidden(settingsScreen, true);
-        
-        toggleHidden(authStepContainer, false);
-        toggleHidden(profileFormFields, true);
-        toggleHidden(existingVaultNotice, true);
+        // First-time setup: check silently for cached token before showing sign-in button
+        chrome.identity.getAuthToken({ interactive: false }, (silentToken) => {
+          if (silentToken) {
+            activeAuthToken = silentToken;
+            chrome.storage.local.set({ authToken: silentToken });
+            fetchGoogleUserEmail(silentToken, (email) => {
+              inspectDriveForVault(silentToken, (vaultFound, fileData, fileId) => {
+                toggleHidden(setupScreen, false);
+                toggleHidden(authStepContainer, true);
+                toggleHidden(profileFormFields, false);
+                
+                if (vaultFound && fileData && fileData.metadata) {
+                  discoveredVaultFileId = fileId;
+                  discoveredProfile = fileData.metadata;
+                  toggleHidden(userNameGroup, true);
+                  toggleHidden(partnerNameGroup, true);
+                  toggleHidden(partnerEmailGroup, true);
+                  toggleHidden(existingVaultNotice, false);
+                }
+              });
+            });
+          } else {
+            // No token in cache: show onboarding connect screen
+            toggleHidden(setupScreen, false);
+            toggleHidden(dashboardScreen, true);
+            toggleHidden(settingsScreen, true);
+            toggleHidden(authStepContainer, false);
+            toggleHidden(profileFormFields, true);
+            toggleHidden(existingVaultNotice, true);
+          }
+        });
       } else {
+        // User fully configured: jump straight to main dashboard view
         toggleHidden(setupScreen, true);
         toggleHidden(dashboardScreen, false);
         toggleHidden(settingsScreen, true);
         toggleHidden(pinPromptArea, true);
         
-        if (accountDisplay) {
-          if (storageData.userEmail && storageData.userEmail.trim() !== "") {
-            accountDisplay.textContent = storageData.userEmail.trim();
-          } else {
-            accountDisplay.textContent = "Connected";
+        // Silently refresh cached token in background without popping up UI
+        chrome.identity.getAuthToken({ interactive: false }, (silentToken) => {
+          if (silentToken) {
+            activeAuthToken = silentToken;
+            chrome.storage.local.set({ authToken: silentToken });
           }
+        });
+
+        if (accountDisplay) {
+          accountDisplay.textContent = storageData.userEmail ? storageData.userEmail.trim() : "Connected";
         }
 
         if (partnerDisplayEmail) {
-          partnerDisplayEmail.textContent = (storageData.partnerEmail && storageData.partnerEmail.trim() !== "") 
-            ? storageData.partnerEmail.trim() 
-            : "Not Set";
+          partnerDisplayEmail.textContent = storageData.partnerEmail ? storageData.partnerEmail.trim() : "Not Set";
         }
           
         if (storageData.driveFileId && viewSheetLink) {
@@ -138,36 +165,46 @@ document.addEventListener("DOMContentLoaded", () => {
 
           viewSheetLink.onclick = async (e) => {
             e.preventDefault();
-            try {
-              const enc = new TextEncoder();
-              const baseKey = await crypto.subtle.importKey(
-                "raw",
-                enc.encode(pin),
-                "PBKDF2",
-                false,
-                ["deriveBits", "deriveKey"]
-              );
-              const derivedKey = await crypto.subtle.deriveKey(
-                {
-                  name: "PBKDF2",
-                  salt: enc.encode(email),
-                  iterations: 100000,
-                  hash: "SHA-256"
-                },
-                baseKey,
-                { name: "AES-GCM", length: 256 },
-                true,
-                ["encrypt", "decrypt"]
-              );
-              const exported = await crypto.subtle.exportKey("raw", derivedKey);
-              const keyHex = Array.from(new Uint8Array(exported))
-                .map(b => b.toString(16).padStart(2, "0"))
-                .join("");
+            
+            // Helper to generate key and open URL with passed access token
+            const launchDashboardWithToken = async (token) => {
+              let keyHex = "";
+              try {
+                const enc = new TextEncoder();
+                const baseKey = await crypto.subtle.importKey(
+                  "raw",
+                  enc.encode(pin),
+                  "PBKDF2",
+                  false,
+                  ["deriveBits", "deriveKey"]
+                );
+                const derivedKey = await crypto.subtle.deriveKey(
+                  {
+                    name: "PBKDF2",
+                    salt: enc.encode(email),
+                    iterations: 100000,
+                    hash: "SHA-256"
+                  },
+                  baseKey,
+                  { name: "AES-GCM", length: 256 },
+                  true,
+                  ["encrypt", "decrypt"]
+                );
+                const exported = await crypto.subtle.exportKey("raw", derivedKey);
+                keyHex = Array.from(new Uint8Array(exported))
+                  .map(b => b.toString(16).padStart(2, "0"))
+                  .join("");
+              } catch (err) {}
 
-              window.open(`${GITHUB_DASHBOARD_BASE_URL}?fileId=${storageData.driveFileId}#key=${keyHex}`, "_blank");
-            } catch (err) {
-              window.open(`${GITHUB_DASHBOARD_BASE_URL}?fileId=${storageData.driveFileId}`, "_blank");
-            }
+              const tokenQuery = token ? `&access_token=${token}` : "";
+              const finalUrl = `${GITHUB_DASHBOARD_BASE_URL}?fileId=${storageData.driveFileId}${tokenQuery}${keyHex ? `#key=${keyHex}` : ''}`;
+              window.open(finalUrl, "_blank");
+            };
+
+            // Retrieve background token dynamically so dashboard opens authenticated instantly
+            chrome.identity.getAuthToken({ interactive: false }, (token) => {
+              launchDashboardWithToken(token || activeAuthToken || storageData.authToken);
+            });
           };
         }
       }
