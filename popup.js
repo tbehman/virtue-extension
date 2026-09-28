@@ -82,8 +82,18 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Browser Check: Detect non-Chrome environments (Brave, Edge, Arc, Opera)
+  async function checkIsStandardChrome() {
+    const isBrave = (navigator.brave && typeof navigator.brave.isBrave === 'function' && await navigator.brave.isBrave());
+    const isEdge = navigator.userAgent.includes("Edg/");
+    const isOpera = navigator.userAgent.includes("OPR/") || navigator.userAgent.includes("Opera");
+    const isArc = getComputedStyle(document.documentElement).getPropertyValue('--arc-palette-title') !== '';
+    
+    return !isBrave && !isEdge && !isOpera && !isArc;
+  }
+
   // ==========================================
-  // 1. INITIALIZATION ENGINE (SILENT AUTH RESTORED)
+  // 1. INITIALIZATION ENGINE
   // ==========================================
   function init() {
     chrome.storage.local.get([
@@ -166,7 +176,6 @@ document.addEventListener("DOMContentLoaded", () => {
           viewSheetLink.onclick = async (e) => {
             e.preventDefault();
             
-            // Helper to generate key and open URL with passed access token
             const launchDashboardWithToken = async (token) => {
               let keyHex = "";
               try {
@@ -201,7 +210,6 @@ document.addEventListener("DOMContentLoaded", () => {
               window.open(finalUrl, "_blank");
             };
 
-            // Retrieve background token dynamically so dashboard opens authenticated instantly
             chrome.identity.getAuthToken({ interactive: false }, (token) => {
               launchDashboardWithToken(token || activeAuthToken || storageData.authToken);
             });
@@ -251,8 +259,19 @@ document.addEventListener("DOMContentLoaded", () => {
   // 2. NATIVE CHROME AUTH & VAULT DISCOVERY
   // ==========================================
   if (authGoogleBtn) {
-    authGoogleBtn.addEventListener("click", () => {
+    authGoogleBtn.addEventListener("click", async () => {
       if (isAuthenticating) return;
+
+      // Check if browser is official Google Chrome
+      const isChrome = await checkIsStandardChrome();
+      if (!isChrome) {
+        if (status) {
+          status.style.color = "#d93025";
+          status.textContent = "⚠️ Virtue requires official Google Chrome. Native Google Sync is not supported on Brave or Edge.";
+        }
+        return;
+      }
+
       isAuthenticating = true;
 
       if (status) {
