@@ -480,12 +480,12 @@
         return;
       }
 
-      // 1. Check for valid cached token in sessionStorage
-      const savedToken = sessionStorage.getItem("virtue_gis_token");
-      const tokenExpiry = sessionStorage.getItem("virtue_gis_expiry");
+      // 1. Check for valid cached token in localStorage (persists across tabs/sessions)
+      const savedToken = localStorage.getItem("virtue_gis_token");
+      const tokenExpiry = localStorage.getItem("virtue_gis_expiry");
 
       if (savedToken && tokenExpiry && Date.now() < parseInt(tokenExpiry, 10)) {
-        showLoadingProgress("Loading session...");
+        showLoadingProgress("Loading report...");
         accessToken = savedToken;
         fetchLogsDirect(fileId, keyHex);
         return;
@@ -499,53 +499,43 @@
           if (tokenResponse.error) {
             console.error("GIS Auth Error:", tokenResponse);
             resetAuthUI();
-            showError("Google Authentication Failed: " + tokenResponse.error);
             return;
           }
 
           showLoadingProgress("Connecting to Google Drive & Decrypting Logs...");
           accessToken = tokenResponse.access_token;
 
-          // Cache token for up to 50 minutes
+          // Cache token locally for up to 50 minutes
           const expiresInMs = (tokenResponse.expires_in || 3000) * 1000;
-          sessionStorage.setItem("virtue_gis_token", accessToken);
-          sessionStorage.setItem("virtue_gis_expiry", (Date.now() + expiresInMs).toString());
+          localStorage.setItem("virtue_gis_token", accessToken);
+          localStorage.setItem("virtue_gis_expiry", (Date.now() + expiresInMs).toString());
 
           await fetchLogsDirect(fileId, keyHex);
         },
       });
 
-      // Helper to trigger popup with focus listener
-      const triggerAuthWithFocusCheck = (promptMode) => {
-        showLoadingProgress("Opening Google Sign-In...");
-        
-        const handleFocus = () => {
-          window.removeEventListener("focus", handleFocus);
-          setTimeout(() => {
-            if (!accessToken) {
-              resetAuthUI();
-            }
-          }, 1000);
-        };
-
-        window.addEventListener("focus", handleFocus);
-        tokenClient.requestAccessToken({ prompt: promptMode });
-      };
-
-      // Button handlers
+      // Manual sign-in button handler (Interactive popup)
       document.getElementById("googleSignInBtn").onclick = () => {
-        triggerAuthWithFocusCheck('');
+        showLoadingProgress("Opening Google Sign-In...");
+        tokenClient.requestAccessToken({ prompt: 'select_account' });
       };
 
       document.getElementById("switchAccountBtn").onclick = (e) => {
         e.preventDefault();
-        sessionStorage.removeItem("virtue_gis_token");
-        sessionStorage.removeItem("virtue_gis_expiry");
-        triggerAuthWithFocusCheck('select_account');
+        localStorage.removeItem("virtue_gis_token");
+        localStorage.removeItem("virtue_gis_expiry");
+        tokenClient.requestAccessToken({ prompt: 'select_account' });
       };
 
-      // AUTO-TRIGGER GOOGLE POPUP IMMEDIATELY ON LINK OPEN
-      triggerAuthWithFocusCheck('');
+      // 3. TRY SILENT AUTHENTICATION FIRST (Zero Popups)
+      tokenClient.requestAccessToken({ prompt: 'none' });
+
+      // Fallback: If silent auth fails or requires interaction, show the sign-in button after 1.5s
+      setTimeout(() => {
+        if (!accessToken) {
+          resetAuthUI();
+        }
+      }, 1500);
     }
 
     document.addEventListener("DOMContentLoaded", () => {
