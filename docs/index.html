@@ -272,7 +272,7 @@
 <body>
 
   <div class="container">
-    <header>
+    header>
       <div>
         <h1>
           <img src="virtue_logo.png" alt="Virtue Logo" style="height: 53px; width: auto; object-fit: contain;">
@@ -647,27 +647,35 @@
       const heartbeats = allLogs.filter(log => log.type === "HEARTBEAT");
       globalBrowsingLogs = allLogs.filter(log => log.type !== "HEARTBEAT" && log.type !== "AUDIT");
 
-      globalBrowsingLogs.sort((a, b) => (b.t || 0) - (a.t || 0));
+      globalBrowsingLogs.sort((a, b) => {
+        const timeA = a.t || a.timestamp || 0;
+        const timeB = b.t || b.timestamp || 0;
+        return timeB - timeA;
+      });
 
       const profileName = metadata.userName || "User";
       const partnerEmail = metadata.partnerEmail || "";
-      const partnerName = metadata.partnerName || "Partner";
 
-      // Determine date range from browsing logs
+      // Safe date calculation to prevent "Invalid Date"
       let dateStr = "";
       if (globalBrowsingLogs.length > 0) {
-        const oldest = new Date(globalBrowsingLogs[globalBrowsingLogs.length - 1].t);
-        const newest = new Date(globalBrowsingLogs[0].t);
-        dateStr = ` • ${formatDateShort(oldest)} – ${formatDateShort(newest)}`;
+        const oldestEntry = globalBrowsingLogs[globalBrowsingLogs.length - 1];
+        const newestEntry = globalBrowsingLogs[0];
+        
+        const oldestMs = oldestEntry.t || oldestEntry.timestamp;
+        const newestMs = newestEntry.t || newestEntry.timestamp;
+
+        if (oldestMs && newestMs) {
+          const oldest = new Date(oldestMs);
+          const newest = new Date(newestMs);
+          if (!isNaN(oldest) && !isNaN(newest)) {
+            dateStr = ` • ${formatDateShort(oldest)} – ${formatDateShort(newest)}`;
+          }
+        }
       }
 
-      // Render Subheader with Partner Attribution
-      const subheaderEl = document.getElementById("dashboardSubheader");
-      if (partnerEmail.trim() !== "") {
-        subheaderEl.innerHTML = `Accountability Report for <strong>${profileName}</strong>${dateStr}<br><span style="font-size: 12px; color: var(--text-muted); font-weight: 500;">🤝 Accountability Partner: ${partnerName} (${partnerEmail})</span>`;
-      } else {
-        subheaderEl.innerHTML = `Accountability Report for <strong>${profileName}</strong>${dateStr}<br><span style="font-size: 12px; color: #d97706; font-weight: 600;">⚠️ Accountability Partner: Unassigned</span>`;
-      }
+      // Clean Subheader line without awkward partner pill
+      document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName}${dateStr}`;
 
       const ignoredWarningLogs = globalBrowsingLogs.filter(log => 
         log.flag === 1 || (log.title && log.title.includes("[VISITED]")) || (log.url && log.url.includes("virtue_bypass=true"))
@@ -683,7 +691,7 @@
       } else if (ignoredWarningLogs.length > 0) {
         statusBanner.className = "status-banner status-banner-flagged";
         statusBanner.innerHTML = '<div class="status-banner-icon">🔴</div>' +
-          '<div><div class="status-banner-title">Attention Required — ' + ignoredWarningLogs.length + ' Restriction Override(s)</div>' +
+          '<div><div class="status-banner-title">Attention Required — Activity Needs Review</div>' +
           '<div class="status-banner-subtext">One or more blocked websites were accessed using an override PIN.</div></div>';
       } else {
         statusBanner.className = "status-banner status-banner-clear";
@@ -706,11 +714,12 @@
       }
 
       globalBrowsingLogs.forEach(log => {
-        const logDate = new Date(log.t);
+        const logMs = log.t || log.timestamp;
+        const logDate = new Date(logMs);
         if (!isNaN(logDate)) {
-          const dateStr = logDate.toDateString();
-          activeDaysSet.add(dateStr);
-          if (dailyCounts[dateStr] !== undefined) dailyCounts[dateStr]++;
+          const dateStrKey = logDate.toDateString();
+          activeDaysSet.add(dateStrKey);
+          if (dailyCounts[dateStrKey] !== undefined) dailyCounts[dateStrKey]++;
         }
 
         if (log.q && log.q.trim() !== "" && log.q.trim().toUpperCase() !== "N/A") {
@@ -760,7 +769,7 @@
 
       const displayList = showAllSearches ? globalSearches : globalSearches.slice(0, 10);
       searchQueryTable.innerHTML = displayList.map(log => 
-        '<tr><td style="white-space: nowrap; color: var(--text-muted); font-size: 12px;">' + formatTime(log.t) + '</td>' +
+        '<tr><td style="white-space: nowrap; color: var(--text-muted); font-size: 12px;">' + formatTime(log.t || log.timestamp) + '</td>' +
         '<td style="font-weight: 600; color: #202124;">"' + log.q + '"</td></tr>'
       ).join('');
 
@@ -792,9 +801,10 @@
           const hasValidSearch = log.q && log.q.trim() !== "";
           const searchSubline = hasValidSearch ? '<br><span style="font-size: 11px; color: #1a73e8; font-weight: 600;">🔍 "' + log.q + '"</span>' : '';
           const displayTitle = log.title ? log.title : "Untitled";
+          const logMs = log.t || log.timestamp;
 
           return '<tr style="' + (isBypassed ? 'background-color: #fffaf9;' : '') + '">' +
-            '<td style="white-space: nowrap; font-size: 12px; color: var(--text-muted);">' + formatTime(log.t) + '</td>' +
+            '<td style="white-space: nowrap; font-size: 12px; color: var(--text-muted);">' + formatTime(logMs) + '</td>' +
             '<td><span class="device-badge">💻 ' + deviceName + '</span></td>' +
             '<td>' + statusBadge + '</td>' +
             '<td><div class="text-truncate" style="font-weight: 500;" title="' + displayTitle + '">' + displayTitle + '</div>' + searchSubline + '</td>' +
@@ -820,7 +830,7 @@
 
         container.innerHTML = sortedGroups.map(([domain, items]) => {
           const listItems = items.map(item => 
-            '<li><span style="color: var(--text-muted); font-size: 11px;">[' + formatTime(item.t) + ']</span> ' +
+            '<li><span style="color: var(--text-muted); font-size: 11px;">[' + formatTime(item.t || item.timestamp) + ']</span> ' +
             '<a href="' + item.url + '" target="_blank" style="color: #1a73e8; text-decoration: none;">' + (item.title || item.url) + '</a></li>'
           ).join('');
 
@@ -884,13 +894,13 @@
       let hasAuditNotice = false;
 
       Object.entries(devices).forEach(([devName, beats]) => {
-        beats.sort((a, b) => (a.t || 0) - (b.t || 0));
+        beats.sort((a, b) => ((a.t || a.timestamp || 0) - (b.t || b.timestamp || 0)));
 
         const unmonitoredWindows = [];
         let currentWindowStart = null;
 
         beats.forEach((hb, idx) => {
-          const hbTime = new Date(hb.t);
+          const hbTime = new Date(hb.t || hb.timestamp);
 
           if (!hb.incognitoAllowed) {
             if (!currentWindowStart) {
@@ -940,12 +950,12 @@
 
       if (ignoredWarningLogs.length > 0) {
         hasAuditNotice = true;
-        const overrideCountText = ignoredWarningLogs.length === 1 ? "1 Override" : ignoredWarningLogs.length + " Overrides";
 
-        noticeHtml += '<div class="audit-section"><div class="audit-section-title">🛑 Restricted Sites Visited (' + overrideCountText + ')</div><ul>';
+        noticeHtml += '<div class="audit-section"><div class="audit-section-title">🛑 Restricted Sites Visited</div><ul>';
 
         ignoredWarningLogs.forEach(log => {
-          const logDate = new Date(log.t);
+          const logMs = log.t || log.timestamp;
+          const logDate = new Date(logMs);
           const dateStr = logDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
           const timeStr = logDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const title = log.title ? log.title.replace("[VISITED]", "").trim() : "Untitled";

@@ -318,23 +318,16 @@ async function dispatchReportSnapshot(profileData, options = {}) {
     // Check for Incognito Audit Gaps
     const hasIncognitoGaps = heartbeats.some(hb => hb.incognitoAllowed === false);
 
-    // Format Date Window for Subject Line
-    const now = new Date();
-    const sevenDaysAgo = new Date(now.getTime() - SEVEN_DAYS_MS);
-    const dateRangeStr = `${sevenDaysAgo.toLocaleDateString([], { month: 'short', day: 'numeric' })}–${now.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
-
-    // Calculate Dynamic Status Subject Line
+    // Clean Covenant Eyes-Style Subject Lines
     const userName = profileData.userName || "User";
-    let subject = `✅ All Clear: ${userName}'s Virtue Report (${dateRangeStr})`;
+    let subject = `✅ Virtue Report for ${userName}: All Clear`;
 
-    if (ignoredWarnings.length > 0) {
-      subject = `🔴 ${ignoredWarnings.length} Override(s): ${userName}'s Virtue Report (${dateRangeStr})`;
-    } else if (hasIncognitoGaps) {
-      subject = `⚠️ Unmonitored Gap: ${userName}'s Virtue Report (${dateRangeStr})`;
+    if (ignoredWarnings.length > 0 || hasIncognitoGaps) {
+      subject = `⚠️ Virtue Report for ${userName}: Activity Needs Review`;
     }
 
     if (isHandoff) {
-      subject = `📋 Closing Summary: ${userName}'s Virtue Report (${dateRangeStr})`;
+      subject = `📋 Virtue Report for ${userName}: Closing Summary`;
     }
 
     const domainCounts = {};
