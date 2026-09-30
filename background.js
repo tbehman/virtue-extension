@@ -308,24 +308,33 @@ async function dispatchReportSnapshot(profileData, options = {}) {
     const heartbeats = logs.filter(l => l.type === "HEARTBEAT");
     const browsingLogs = logs.filter(l => l.type !== "HEARTBEAT" && l.type !== "AUDIT");
 
-    const validSearches = browsingLogs.filter(l => (l.q || l.searchQuery) && (l.q || l.searchQuery).trim() !== "" && (l.q || l.searchQuery).trim().toUpperCase() !== "N/A");
+    // Extract & Sort searches DESCENDING (Newest First)
+    const validSearches = browsingLogs
+      .filter(l => (l.q || l.searchQuery) && (l.q || l.searchQuery).trim() !== "" && (l.q || l.searchQuery).trim().toUpperCase() !== "N/A")
+      .sort((a, b) => (b.t || b.timestamp || 0) - (a.t || a.timestamp || 0));
+
     const ignoredWarnings = browsingLogs.filter(l => l.flag === 1 || (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
 
     // Check for Incognito Audit Gaps
     const hasIncognitoGaps = heartbeats.some(hb => hb.incognitoAllowed === false);
 
+    // Format Date Window for Subject Line
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - SEVEN_DAYS_MS);
+    const dateRangeStr = `${sevenDaysAgo.toLocaleDateString([], { month: 'short', day: 'numeric' })}–${now.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+
     // Calculate Dynamic Status Subject Line
     const userName = profileData.userName || "User";
-    let subjectPrefix = "✅ ALL CLEAR";
+    let subject = `✅ All Clear: ${userName}'s Virtue Report (${dateRangeStr})`;
+
     if (ignoredWarnings.length > 0) {
-      subjectPrefix = `🔴 ATTENTION REQUIRED (${ignoredWarnings.length} Overrides)`;
+      subject = `🔴 ${ignoredWarnings.length} Override(s): ${userName}'s Virtue Report (${dateRangeStr})`;
     } else if (hasIncognitoGaps) {
-      subjectPrefix = "⚠️ AUDIT NOTICE (Unmonitored Gap)";
+      subject = `⚠️ Unmonitored Gap: ${userName}'s Virtue Report (${dateRangeStr})`;
     }
 
-    let subject = `${subjectPrefix}: Virtue Weekly Accountability Report for ${userName}`;
     if (isHandoff) {
-      subject = `📋 Closing Summary: Virtue Accountability Handoff Report for ${userName}`;
+      subject = `📋 Closing Summary: ${userName}'s Virtue Report (${dateRangeStr})`;
     }
 
     const domainCounts = {};
@@ -369,6 +378,7 @@ async function dispatchReportSnapshot(profileData, options = {}) {
         `).join('')
       : `<tr><td colspan="2" style="padding: 12px; text-align: center; color: #6c757d; font-size: 13px;">No browsing activity logged</td></tr>`;
 
+    // Take top 10 NEWEST search queries
     const searchRowsHtml = validSearches.length > 0
       ? validSearches.slice(0, 10).map(s => `
           <li style="margin-bottom: 6px; font-size: 13px; color: #212529;">
@@ -823,3 +833,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 });
+
+// ==========================================
+// 7. EXPOSE HELPERS FOR DEVTOOLS CONSOLE TESTING
+// ==========================================
+globalThis.dispatchReportSnapshot = dispatchReportSnapshot;
+globalThis.checkAndSendWeeklyDigest = checkAndSendWeeklyDigest;

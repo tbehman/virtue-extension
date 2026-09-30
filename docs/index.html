@@ -653,11 +653,20 @@
       const partnerEmail = metadata.partnerEmail || "";
       const partnerName = metadata.partnerName || "Partner";
 
+      // Determine date range from browsing logs
+      let dateStr = "";
+      if (globalBrowsingLogs.length > 0) {
+        const oldest = new Date(globalBrowsingLogs[globalBrowsingLogs.length - 1].t);
+        const newest = new Date(globalBrowsingLogs[0].t);
+        dateStr = ` • ${formatDateShort(oldest)} – ${formatDateShort(newest)}`;
+      }
+
       // Render Subheader with Partner Attribution
+      const subheaderEl = document.getElementById("dashboardSubheader");
       if (partnerEmail.trim() !== "") {
-        document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName} • Shared with ${partnerName} (${partnerEmail})`;
+        subheaderEl.innerHTML = `Accountability Report for <strong>${profileName}</strong>${dateStr}<br><span style="font-size: 12px; color: var(--text-muted); font-weight: 500;">🤝 Accountability Partner: ${partnerName} (${partnerEmail})</span>`;
       } else {
-        document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName} • ⚠️ No Active Accountability Partner Assigned`;
+        subheaderEl.innerHTML = `Accountability Report for <strong>${profileName}</strong>${dateStr}<br><span style="font-size: 12px; color: #d97706; font-weight: 600;">⚠️ Accountability Partner: Unassigned</span>`;
       }
 
       const ignoredWarningLogs = globalBrowsingLogs.filter(log => 
@@ -667,7 +676,6 @@
       const statusBanner = document.getElementById("statusBanner");
 
       if (!partnerEmail.trim()) {
-        // Amber Warning Banner when no partner is assigned
         statusBanner.className = "status-banner status-banner-unmonitored";
         statusBanner.innerHTML = '<div class="status-banner-icon">🟠</div>' +
           '<div><div class="status-banner-title">Unmonitored Report — No Accountability Partner Assigned</div>' +
