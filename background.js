@@ -284,12 +284,15 @@ async function checkAndSendWeeklyDigest() {
     const lastSent = data.lastWeeklyDigestSentAt || 0;
     if (now - lastSent < SEVEN_DAYS_MS) return;
 
-    await dispatchReportSnapshot(data, "🛡️ Virtue Weekly Accountability Digest");
+    await dispatchReportSnapshot(data, { isHandoff: false });
     chrome.storage.local.set({ lastWeeklyDigestSentAt: now });
   });
 }
 
-async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
+async function dispatchReportSnapshot(profileData, options = {}) {
+  const isHandoff = options.isHandoff || false;
+  const targetEmail = options.targetEmail || profileData.partnerEmail;
+
   try {
     const { key, keyHex } = await getActiveEncryptionKey();
     const res = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${profileData.driveFileId}?alt=media`);
@@ -302,11 +305,31 @@ async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
       logs = fileData.logs || [];
     }
 
-    const validSearches = logs.filter(l => (l.q || l.searchQuery) && (l.q || l.searchQuery).trim() !== "" && (l.q || l.searchQuery).trim().toUpperCase() !== "N/A");
-    const ignoredWarnings = logs.filter(l => l.flag === 1 || (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
+    const heartbeats = logs.filter(l => l.type === "HEARTBEAT");
+    const browsingLogs = logs.filter(l => l.type !== "HEARTBEAT" && l.type !== "AUDIT");
+
+    const validSearches = browsingLogs.filter(l => (l.q || l.searchQuery) && (l.q || l.searchQuery).trim() !== "" && (l.q || l.searchQuery).trim().toUpperCase() !== "N/A");
+    const ignoredWarnings = browsingLogs.filter(l => l.flag === 1 || (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
+
+    // Check for Incognito Audit Gaps
+    const hasIncognitoGaps = heartbeats.some(hb => hb.incognitoAllowed === false);
+
+    // Calculate Dynamic Status Subject Line
+    const userName = profileData.userName || "User";
+    let subjectPrefix = "✅ ALL CLEAR";
+    if (ignoredWarnings.length > 0) {
+      subjectPrefix = `🔴 ATTENTION REQUIRED (${ignoredWarnings.length} Overrides)`;
+    } else if (hasIncognitoGaps) {
+      subjectPrefix = "⚠️ AUDIT NOTICE (Unmonitored Gap)";
+    }
+
+    let subject = `${subjectPrefix}: Virtue Weekly Accountability Report for ${userName}`;
+    if (isHandoff) {
+      subject = `📋 Closing Summary: Virtue Accountability Handoff Report for ${userName}`;
+    }
 
     const domainCounts = {};
-    logs.forEach(l => {
+    browsingLogs.forEach(l => {
       try {
         if (l.url && l.url.startsWith("http")) {
           const domain = new URL(l.url).hostname.replace('www.', '');
@@ -316,7 +339,6 @@ async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
     });
     const topDomains = Object.entries(domainCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
 
-    const userName = profileData.userName || "User";
     const partnerName = profileData.partnerName || "Partner";
     const dashboardUrl = `https://tbehman.github.io/virtue-extension/?fileId=${profileData.driveFileId}#key=${keyHex}`;
 
@@ -356,6 +378,17 @@ async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
         `).join('')
       : `<li style="font-size: 13px; color: #6c757d;">No search queries recorded</li>`;
 
+    // Only include dashboard link for active partner; EXCLUDE link for former partner handoffs
+    const footerLinkHtml = isHandoff ? `
+      <div style="background-color: #e9ecef; padding: 12px; border-radius: 6px; text-align: center; font-size: 12px; color: #495057;">
+        ℹ️ <em>This is a final closing snapshot. Live web report access for this account has ended.</em>
+      </div>
+    ` : `
+      <div style="text-align: center; border-top: 1px solid #e9ecef; padding-top: 20px; margin-top: 20px;">
+        <a href="${dashboardUrl}" target="_blank" style="background-color: #198754; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">View Full Web Dashboard ➔</a>
+      </div>
+    `;
+
     const bodyHtml = `
       <!DOCTYPE html>
       <html>
@@ -366,7 +399,11 @@ async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
             <h2 style="margin: 0; color: #198754; font-size: 22px;">Virtue Accountability Report</h2>
           </div>
           <p style="font-size: 14px; color: #212529;">Hello ${partnerName},</p>
-          <p style="font-size: 14px; color: #6c757d; line-height: 1.5;">Here is the latest accountability report snapshot for <strong>${userName}</strong>.</p>
+          <p style="font-size: 14px; color: #6c757d; line-height: 1.5;">
+            ${isHandoff 
+              ? `This is a final closing accountability summary for <strong>${userName}</strong> as of their partner update.` 
+              : `Here is the latest accountability report snapshot for <strong>${userName}</strong>.`}
+          </p>
           ${warningsHtml}
           <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; background: #f8f9fa; border-radius: 8px;">
             <tr>
@@ -388,17 +425,14 @@ async function dispatchReportSnapshot(profileData, customSubjectPrefix) {
           <ul style="padding-left: 20px; margin-bottom: 25px;">
             ${searchRowsHtml}
           </ul>
-          <div style="text-align: center; border-top: 1px solid #e9ecef; padding-top: 20px; margin-top: 20px;">
-            <a href="${dashboardUrl}" target="_blank" style="background-color: #198754; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">View Full Web Dashboard ➔</a>
-          </div>
+          ${footerLinkHtml}
           <p style="font-size: 12px; color: #6c757d; text-align: center; margin-top: 25px;">Blessings,<br><strong>Virtue Accountability Team</strong></p>
         </div>
       </body>
       </html>
     `;
 
-    const subject = `${customSubjectPrefix} for ${userName}`;
-    await sendGmailNotification({ toEmail: profileData.partnerEmail, subject: subject, bodyHtml: bodyHtml });
+    await sendGmailNotification({ toEmail: targetEmail, subject: subject, bodyHtml: bodyHtml });
   } catch (err) {
     console.error("Report snapshot dispatch error:", err);
   }
@@ -743,18 +777,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.type === "SEND_PARTNER_CHANGE_ALERT") {
-    const subject = "⚠️ Virtue Security Alert: Partner Email Modified";
-    const bodyText = `Hello ${request.partnerName || 'Partner'},\n\nThis is an automated security notification from Virtue. ` +
-      `${request.userName || 'User'} has updated their designated accountability partner email from ${request.oldEmail} to ${request.newEmail}.\n\n` +
-      `If you did not discuss or authorize this change, please contact them directly.\n\n` +
-      `Blessings,\nVirtue Security`;
+  if (request.type === "SEND_PARTNER_HANDOFF_EMAIL") {
+    chrome.storage.local.get(["userName", "partnerName", "driveFileId"], async (profile) => {
+      if (!profile.driveFileId || !request.oldEmail) {
+        sendResponse({ success: false });
+        return;
+      }
 
-    sendGmailNotification({
-      toEmail: request.oldEmail,
-      subject: subject,
-      bodyText: bodyText
-    }).then((success) => sendResponse({ success }));
+      await dispatchReportSnapshot(profile, { 
+        isHandoff: true, 
+        targetEmail: request.oldEmail 
+      });
+
+      sendResponse({ success: true });
+    });
     return true;
   }
 
@@ -763,7 +799,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "driveFileId", "authToken"], async (profile) => {
       if (profile.partnerEmail && profile.driveFileId) {
-        await dispatchReportSnapshot(profile, "⚠️ Virtue Pre-Disconnect Accountability Snapshot");
+        await dispatchReportSnapshot(profile, { isHandoff: true, targetEmail: profile.partnerEmail });
       }
 
       const token = profile.authToken;

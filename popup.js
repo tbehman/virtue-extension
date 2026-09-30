@@ -93,6 +93,59 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ==========================================
+  // DRIVE PERMISSIONS HELPERS
+  // ==========================================
+  async function grantDriveAccess(token, fileId, partnerEmail) {
+    if (!token || !fileId || !partnerEmail) return { success: false, error: "Missing parameters" };
+
+    try {
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          role: "reader",
+          type: "user",
+          emailAddress: partnerEmail
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        return { success: false, error: data.error?.message || "User not found" };
+      }
+      return { success: true, data };
+    } catch (err) {
+      return { success: false, error: err.message || "Network error" };
+    }
+  }
+
+  async function revokeDriveAccess(token, fileId, targetEmail) {
+    if (!token || !fileId || !targetEmail) return;
+
+    try {
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions?fields=permissions(id,emailAddress)`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      
+      if (data && data.permissions) {
+        const match = data.permissions.find(p => p.emailAddress && p.emailAddress.toLowerCase() === targetEmail.toLowerCase());
+        if (match) {
+          await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions/${match.id}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${token}` }
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to revoke partner permission:", err);
+    }
+  }
+
+  // ==========================================
   // 1. INITIALIZATION ENGINE
   // ==========================================
   function init() {
@@ -113,7 +166,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const isConfigured = Boolean(storageData.userPin && storageData.driveFileId);
 
       if (!isConfigured) {
-        // First-time setup: check silently for cached token before showing sign-in button
         chrome.identity.getAuthToken({ interactive: false }, (silentToken) => {
           if (silentToken) {
             activeAuthToken = silentToken;
@@ -135,7 +187,6 @@ document.addEventListener("DOMContentLoaded", () => {
               });
             });
           } else {
-            // No token in cache: show onboarding connect screen
             toggleHidden(setupScreen, false);
             toggleHidden(dashboardScreen, true);
             toggleHidden(settingsScreen, true);
@@ -145,13 +196,11 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         });
       } else {
-        // User fully configured: jump straight to main dashboard view
         toggleHidden(setupScreen, true);
         toggleHidden(dashboardScreen, false);
         toggleHidden(settingsScreen, true);
         toggleHidden(pinPromptArea, true);
         
-        // Silently refresh cached token in background without popping up UI
         chrome.identity.getAuthToken({ interactive: false }, (silentToken) => {
           if (silentToken) {
             activeAuthToken = silentToken;
@@ -262,7 +311,6 @@ document.addEventListener("DOMContentLoaded", () => {
     authGoogleBtn.addEventListener("click", async () => {
       if (isAuthenticating) return;
 
-      // Check if browser is official Google Chrome
       const isChrome = await checkIsStandardChrome();
       if (!isChrome) {
         if (status) {
@@ -439,7 +487,11 @@ document.addEventListener("DOMContentLoaded", () => {
           pinVerifier
         };
 
-        createNewDriveVault(activeAuthToken, profilePayload, (newFileId) => {
+        createNewDriveVault(activeAuthToken, profilePayload, async (newFileId) => {
+          if (newFileId) {
+            await grantDriveAccess(activeAuthToken, newFileId, email);
+          }
+
           const storagePayload = {
             authToken: activeAuthToken,
             userEmail: activeUserEmail || "",
@@ -564,14 +616,38 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (profileStatusText) {
         profileStatusText.style.color = "#1a73e8";
-        profileStatusText.textContent = "Saving profile changes...";
+        profileStatusText.textContent = "Validating partner email with Google Drive...";
         profileStatusText.style.display = "block";
       }
 
-      chrome.storage.local.get(["partnerEmail", "userName", "userEmail", "authToken", "driveFileId"], (currentData) => {
+      chrome.storage.local.get(["partnerEmail", "userName", "userEmail", "authToken", "driveFileId"], async (currentData) => {
         const stored = currentData || {};
         const oldPartnerEmail = stored.partnerEmail;
         const isEmailChanged = oldPartnerEmail && oldPartnerEmail.toLowerCase() !== newPartnerEmail.toLowerCase();
+
+        // 1. Attempt to grant access to the new partner first
+        const grantResult = await grantDriveAccess(stored.authToken, stored.driveFileId, newPartnerEmail);
+
+        if (!grantResult.success) {
+          if (profileStatusText) {
+            profileStatusText.style.color = "#d93025";
+            profileStatusText.textContent = `❌ Google account not found for '${newPartnerEmail}'. Please check for typos.`;
+            profileStatusText.style.display = "block";
+          }
+          return;
+        }
+
+        // 2. Email is valid and permission granted. Perform safe handoff if email changed.
+        if (isEmailChanged) {
+          // Send final closing summary snapshot to old partner (NO links)
+          chrome.runtime.sendMessage({
+            type: "SEND_PARTNER_HANDOFF_EMAIL",
+            oldEmail: oldPartnerEmail
+          });
+
+          // Revoke former partner's Google Drive permission
+          await revokeDriveAccess(stored.authToken, stored.driveFileId, oldPartnerEmail);
+        }
 
         const updatedPayload = {
           userName: newUserName,
@@ -585,7 +661,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (profileStatusText) {
               if (isEmailChanged) {
                 profileStatusText.style.color = "#129eaf";
-                profileStatusText.textContent = "Profile saved! Courtesy alert sent to former partner.";
+                profileStatusText.textContent = "Profile saved! Closing snapshot sent to former partner.";
               } else {
                 profileStatusText.style.color = "#188038";
                 profileStatusText.textContent = "Profile saved successfully!";

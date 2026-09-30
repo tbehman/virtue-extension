@@ -62,6 +62,11 @@
       border: 1px solid var(--danger-border);
       color: var(--danger-text);
     }
+    .status-banner-unmonitored {
+      background: var(--warning-bg);
+      border: 1px solid var(--warning-border);
+      color: var(--warning-text);
+    }
     .status-banner-icon {
       font-size: 22px;
       line-height: 1;
@@ -477,14 +482,12 @@
       const urlParams = new URLSearchParams(window.location.search);
       const passedToken = urlParams.get("access_token");
 
-      // 1. If passed directly from Chrome extension URL, save and use immediately
       if (passedToken) {
         showLoadingProgress("Loading report...");
         accessToken = passedToken;
         localStorage.setItem("virtue_gis_token", passedToken);
         localStorage.setItem("virtue_gis_expiry", (Date.now() + 3000 * 1000).toString());
 
-        // Strip access_token from URL bar for cleanliness
         urlParams.delete("access_token");
         const cleanUrl = window.location.pathname + (urlParams.toString() ? "?" + urlParams.toString() : "") + window.location.hash;
         window.history.replaceState({}, document.title, cleanUrl);
@@ -493,7 +496,6 @@
         return;
       }
 
-      // 2. Check for valid cached token in localStorage
       const savedToken = localStorage.getItem("virtue_gis_token");
       const tokenExpiry = localStorage.getItem("virtue_gis_expiry");
 
@@ -504,7 +506,6 @@
         return;
       }
 
-      // 3. Fallback: Show manual sign-in button without triggering off-screen popups
       resetAuthUI();
 
       if (typeof google === "undefined" || !google.accounts || !google.accounts.oauth2) {
@@ -513,7 +514,6 @@
         return;
       }
 
-      // Initialize GIS Token Client for interactive sign-in
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: 'https://www.googleapis.com/auth/drive.readonly',
@@ -650,10 +650,14 @@
       globalBrowsingLogs.sort((a, b) => (b.t || 0) - (a.t || 0));
 
       const profileName = metadata.userName || "User";
-      if (globalBrowsingLogs.length > 0) {
-        const oldest = new Date(globalBrowsingLogs[globalBrowsingLogs.length - 1].t);
-        const newest = new Date(globalBrowsingLogs[0].t);
-        document.getElementById("dashboardSubheader").textContent = "Accountability Report for " + profileName + " • " + formatDateShort(oldest) + " – " + formatDateShort(newest);
+      const partnerEmail = metadata.partnerEmail || "";
+      const partnerName = metadata.partnerName || "Partner";
+
+      // Render Subheader with Partner Attribution
+      if (partnerEmail.trim() !== "") {
+        document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName} • Shared with ${partnerName} (${partnerEmail})`;
+      } else {
+        document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName} • ⚠️ No Active Accountability Partner Assigned`;
       }
 
       const ignoredWarningLogs = globalBrowsingLogs.filter(log => 
@@ -661,7 +665,14 @@
       );
 
       const statusBanner = document.getElementById("statusBanner");
-      if (ignoredWarningLogs.length > 0) {
+
+      if (!partnerEmail.trim()) {
+        // Amber Warning Banner when no partner is assigned
+        statusBanner.className = "status-banner status-banner-unmonitored";
+        statusBanner.innerHTML = '<div class="status-banner-icon">🟠</div>' +
+          '<div><div class="status-banner-title">Unmonitored Report — No Accountability Partner Assigned</div>' +
+          '<div class="status-banner-subtext">This report is currently not being shared with an accountability partner. Add a partner\'s Google Account in settings to restore full accountability.</div></div>';
+      } else if (ignoredWarningLogs.length > 0) {
         statusBanner.className = "status-banner status-banner-flagged";
         statusBanner.innerHTML = '<div class="status-banner-icon">🔴</div>' +
           '<div><div class="status-banner-title">Attention Required — ' + ignoredWarningLogs.length + ' Restriction Override(s)</div>' +
