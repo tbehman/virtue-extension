@@ -272,7 +272,7 @@
 <body>
 
   <div class="container">
-    header>
+    <header>
       <div>
         <h1>
           <img src="virtue_logo.png" alt="Virtue Logo" style="height: 53px; width: auto; object-fit: contain;">
@@ -624,7 +624,7 @@
       let message = "An unknown error occurred while attempting to render the dashboard.";
 
       if (errCode === "VAULT_MISSING") {
-        title = "⚠️ Log File Missing or Access Denied";
+        title = "⚠️️ Log File Missing or Access Denied";
         message = "The Virtue log file could not be accessed. Ensure the file was shared with your Google Account and hasn't been deleted from Drive.";
       } else if (errCode === "DECRYPTION_FAILED") {
         title = "⚠️ Log Data Corrupted or Modified";
@@ -674,7 +674,7 @@
         }
       }
 
-      // Clean Subheader line without awkward partner pill
+      // Clean Subheader line
       document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName}${dateStr}`;
 
       const ignoredWarningLogs = globalBrowsingLogs.filter(log => 

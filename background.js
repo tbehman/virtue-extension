@@ -85,6 +85,45 @@ function base64EncodeUtf8(str) {
   .replace(/=+$/, '');
 }
 
+// Helper to calculate peak 2-hour browsing window
+function calculatePeakBrowsingHours(logs) {
+  if (!logs || logs.length === 0) return "N/A";
+
+  const hourCounts = new Array(24).fill(0);
+  logs.forEach(l => {
+    const timeMs = l.t || l.timestamp;
+    if (timeMs) {
+      const hour = new Date(timeMs).getHours();
+      hourCounts[hour]++;
+    }
+  });
+
+  let maxVisits = 0;
+  let peakStartHour = -1;
+
+  for (let h = 0; h < 24; h++) {
+    const windowVisits = hourCounts[h] + hourCounts[(h + 1) % 24];
+    if (windowVisits > maxVisits) {
+      maxVisits = windowVisits;
+      peakStartHour = h;
+    }
+  }
+
+  if (maxVisits === 0 || peakStartHour === -1) return "N/A";
+
+  const formatHour = (h) => {
+    const period = h >= 12 ? "PM" : "AM";
+    let hour12 = h % 12;
+    if (hour12 === 0) hour12 = 12;
+    return `${hour12} ${period}`;
+  };
+
+  const startStr = formatHour(peakStartHour);
+  const endStr = formatHour((peakStartHour + 2) % 24);
+
+  return `${startStr} – ${endStr}`;
+}
+
 // ==========================================
 // 1. CHROME NATIVE AUTHENTICATION ENGINE
 // ==========================================
@@ -92,9 +131,7 @@ function notifyActiveTabOfAuthFailure() {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs[0]?.id && tabs[0].url?.startsWith("http")) {
       chrome.tabs.sendMessage(tabs[0].id, { type: "SHOW_REAUTH_BANNER" }, () => {
-        if (chrome.runtime.lastError) {
-          // Catch missing content script receiver gracefully
-        }
+        if (chrome.runtime.lastError) {}
       });
     }
   });
@@ -105,9 +142,7 @@ function clearAuthFailureBanner() {
     tabs.forEach(tab => {
       if (tab.id && tab.url?.startsWith("http")) {
         chrome.tabs.sendMessage(tab.id, { type: "HIDE_REAUTH_BANNER" }, () => {
-          if (chrome.runtime.lastError) {
-            // Catch missing content script receiver gracefully
-          }
+          if (chrome.runtime.lastError) {}
         });
       }
     });
@@ -305,15 +340,52 @@ async function dispatchReportSnapshot(profileData, options = {}) {
       logs = fileData.logs || [];
     }
 
+    const nowMs = Date.now();
+    const sevenDaysAgoMs = nowMs - SEVEN_DAYS_MS;
+    const fourteenDaysAgoMs = nowMs - (SEVEN_DAYS_MS * 2);
+
     const heartbeats = logs.filter(l => l.type === "HEARTBEAT");
     const browsingLogs = logs.filter(l => l.type !== "HEARTBEAT" && l.type !== "AUDIT");
 
-    // Extract & Sort searches DESCENDING (Newest First)
-    const validSearches = browsingLogs
+    // Filter current 7-day logs
+    const currentWeekLogs = browsingLogs.filter(l => {
+      const time = l.t || l.timestamp || 0;
+      return time >= sevenDaysAgoMs;
+    });
+
+    // Filter previous 7-day logs (for trend calculation)
+    const prevWeekLogs = browsingLogs.filter(l => {
+      const time = l.t || l.timestamp || 0;
+      return time >= fourteenDaysAgoMs && time < sevenDaysAgoMs;
+    });
+
+    // 1. Calculate Sites Visited + Trend
+    const currentSitesCount = currentWeekLogs.length;
+    const prevSitesCount = prevWeekLogs.length;
+    let trendHtml = "";
+
+    if (prevSitesCount > 0) {
+      const diff = currentSitesCount - prevSitesCount;
+      const pctChange = Math.round((diff / prevSitesCount) * 100);
+
+      if (pctChange > 0) {
+        trendHtml = `<div style="font-size: 11px; color: #d97706; font-weight: 600; margin-top: 4px;">▲ ${pctChange}% vs. last week</div>`;
+      } else if (pctChange < 0) {
+        trendHtml = `<div style="font-size: 11px; color: #198754; font-weight: 600; margin-top: 4px;">▼ ${Math.abs(pctChange)}% vs. last week</div>`;
+      } else {
+        trendHtml = `<div style="font-size: 11px; color: #6c757d; font-weight: 500; margin-top: 4px;">No change vs. last week</div>`;
+      }
+    }
+
+    // 2. Calculate Peak Browsing Hours
+    const peakHoursStr = calculatePeakBrowsingHours(currentWeekLogs);
+
+    // 3. Extract & Sort searches DESCENDING (Newest First)
+    const validSearches = currentWeekLogs
       .filter(l => (l.q || l.searchQuery) && (l.q || l.searchQuery).trim() !== "" && (l.q || l.searchQuery).trim().toUpperCase() !== "N/A")
       .sort((a, b) => (b.t || b.timestamp || 0) - (a.t || a.timestamp || 0));
 
-    const ignoredWarnings = browsingLogs.filter(l => l.flag === 1 || (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
+    const ignoredWarnings = currentWeekLogs.filter(l => l.flag === 1 || (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
 
     // Check for Incognito Audit Gaps
     const hasIncognitoGaps = heartbeats.some(hb => hb.incognitoAllowed === false);
@@ -330,8 +402,9 @@ async function dispatchReportSnapshot(profileData, options = {}) {
       subject = `📋 Virtue Report for ${userName}: Closing Summary`;
     }
 
+    // Top Domains
     const domainCounts = {};
-    browsingLogs.forEach(l => {
+    currentWeekLogs.forEach(l => {
       try {
         if (l.url && l.url.startsWith("http")) {
           const domain = new URL(l.url).hostname.replace('www.', '');
@@ -344,11 +417,13 @@ async function dispatchReportSnapshot(profileData, options = {}) {
     const partnerName = profileData.partnerName || "Partner";
     const dashboardUrl = `https://tbehman.github.io/virtue-extension/?fileId=${profileData.driveFileId}#key=${keyHex}`;
 
+    // Clean Pluralization for Warning Banner
     let warningsHtml = "";
     if (ignoredWarnings.length > 0) {
+      const warningCountText = ignoredWarnings.length === 1 ? "1 Restricted Site Visited" : `${ignoredWarnings.length} Restricted Sites Visited`;
       warningsHtml = `
         <div style="background-color: #fff3cd; border: 1px solid #ffe69c; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-          <h3 style="margin: 0 0 10px 0; color: #664d03; font-size: 15px;">⚠️ Restricted Sites Visited (${ignoredWarnings.length} Ignored Warnings)</h3>
+          <h3 style="margin: 0 0 10px 0; color: #664d03; font-size: 15px;">⚠️ ${warningCountText}</h3>
           <ul style="margin: 0; padding-left: 20px; color: #664d03; font-size: 13px;">
             ${ignoredWarnings.map(w => `
               <li style="margin-bottom: 6px;">
@@ -381,7 +456,7 @@ async function dispatchReportSnapshot(profileData, options = {}) {
         `).join('')
       : `<li style="font-size: 13px; color: #6c757d;">No search queries recorded</li>`;
 
-    // Only include dashboard link for active partner; EXCLUDE link for former partner handoffs
+    // Dashboard Link / Handoff Banner
     const footerLinkHtml = isHandoff ? `
       <div style="background-color: #e9ecef; padding: 12px; border-radius: 6px; text-align: center; font-size: 12px; color: #495057;">
         ℹ️ <em>This is a final closing snapshot. Live web report access for this account has ended.</em>
@@ -408,23 +483,31 @@ async function dispatchReportSnapshot(profileData, options = {}) {
               : `Here is the latest accountability report snapshot for <strong>${userName}</strong>.`}
           </p>
           ${warningsHtml}
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; background: #f8f9fa; border-radius: 8px;">
+          
+          <!-- Executive Clean Scorecard Grid -->
+          <table style="width: 100%; border-collapse: separate; border-spacing: 10px; margin-bottom: 25px;">
             <tr>
-              <td style="padding: 12px; text-align: center; border-right: 1px solid #e9ecef;">
-                <div style="font-size: 11px; color: #6c757d; text-transform: uppercase;">Total Searches</div>
-                <div style="font-size: 20px; font-weight: bold; color: #198754;">${validSearches.length}</div>
+              <td style="width: 33%; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 14px; text-align: center; vertical-align: top;">
+                <div style="font-size: 10px; color: #6c757d; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Sites Visited</div>
+                <div style="font-size: 22px; font-weight: 800; color: #212529; margin-top: 4px;">${currentSitesCount}</div>
+                ${trendHtml}
               </td>
-              <td style="padding: 12px; text-align: center;">
-                <div style="font-size: 11px; color: #6c757d; text-transform: uppercase;">Ignored Warnings</div>
-                <div style="font-size: 20px; font-weight: bold; color: ${ignoredWarnings.length > 0 ? '#dc3545' : '#198754'};">${ignoredWarnings.length}</div>
+              <td style="width: 33%; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 14px; text-align: center; vertical-align: top;">
+                <div style="font-size: 10px; color: #6c757d; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Peak Browsing Hours</div>
+                <div style="font-size: 15px; font-weight: 800; color: #212529; margin-top: 8px;">${peakHoursStr}</div>
+              </td>
+              <td style="width: 33%; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 14px; text-align: center; vertical-align: top;">
+                <div style="font-size: 10px; color: #6c757d; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Web Searches</div>
+                <div style="font-size: 22px; font-weight: 800; color: #198754; margin-top: 4px;">${validSearches.length}</div>
               </td>
             </tr>
           </table>
+
           <h3 style="font-size: 15px; color: #212529; margin-bottom: 10px;">📊 Top Visited Domains</h3>
           <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
             ${domainRowsHtml}
           </table>
-          <h3 style="font-size: 15px; color: #212529; margin-bottom: 10px;">🔍 Recent Search Queries</h3>
+          <h3 style="font-size: 15px; color: #212529; margin-bottom: 10px;">🔍 Recent Web Searches</h3>
           <ul style="padding-left: 20px; margin-bottom: 25px;">
             ${searchRowsHtml}
           </ul>
@@ -530,13 +613,11 @@ function syncLogsToDriveFile(fileId, newLogs) {
       const driveMeta = fileData.metadata || {};
       const profileUpdates = {};
 
-      // Profile Sync
       if (!localProfile.userName && driveMeta.userName) profileUpdates.userName = driveMeta.userName;
       if (!localProfile.partnerName && driveMeta.partnerName) profileUpdates.partnerName = driveMeta.partnerName;
       if (!localProfile.partnerEmail && driveMeta.partnerEmail) profileUpdates.partnerEmail = driveMeta.partnerEmail;
       if (!localProfile.userEmail && driveMeta.userEmail) profileUpdates.userEmail = driveMeta.userEmail;
 
-      // Filter/Blocklist Sync (Master State pattern)
       const driveSettingsTime = driveMeta.settingsLastUpdated || 0;
       const localSettingsTime = localProfile.settingsLastUpdated || 0;
 
