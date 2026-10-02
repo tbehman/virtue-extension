@@ -643,25 +643,26 @@
     }
 
     function processAndRender(allLogs, metadata) {
-      const heartbeats = allLogs.filter(log => log.type === "HEARTBEAT");
-      globalBrowsingLogs = allLogs.filter(log => log.type !== "HEARTBEAT" && log.type !== "AUDIT");
-
-      globalBrowsingLogs.sort((a, b) => {
+      // Direct Fix: Always pre-sort ALL incoming logs newest-first before reading bounds or filtering
+      allLogs.sort((a, b) => {
         const timeA = a.t || a.timestamp || 0;
         const timeB = b.t || b.timestamp || 0;
         return timeB - timeA;
       });
 
+      const heartbeats = allLogs.filter(log => log.type === "HEARTBEAT");
+      globalBrowsingLogs = allLogs.filter(log => log.type !== "HEARTBEAT" && log.type !== "AUDIT");
+
       const profileName = metadata.userName || "User";
       const partnerEmail = metadata.partnerEmail || "";
 
       let dateStr = "";
-      if (globalBrowsingLogs.length > 0) {
-        const oldestEntry = globalBrowsingLogs[globalBrowsingLogs.length - 1];
-        const newestEntry = globalBrowsingLogs[0];
+      if (allLogs.length > 0) {
+        const newestEntry = allLogs[0];
+        const oldestEntry = allLogs[allLogs.length - 1];
         
-        const oldestMs = oldestEntry.t || oldestEntry.timestamp;
         const newestMs = newestEntry.t || newestEntry.timestamp;
+        const oldestMs = oldestEntry.t || oldestEntry.timestamp;
 
         if (oldestMs && newestMs) {
           const oldest = new Date(oldestMs);
