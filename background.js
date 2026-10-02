@@ -65,15 +65,60 @@ function extractSearchQuery(urlStr) {
   return null;
 }
 
-function makeFileUnlisted(fileId) {
-  authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role: "reader", type: "anyone" })
-  })
-  .then(res => res.json())
-  .then(data => console.log("Drive file permissions set to Anyone with link:", data))
-  .catch(err => console.error("Error setting Drive permissions:", err));
+/**
+ * Updates Google Drive File ACLs (Restricted Access + Explicit User Sharing)
+ */
+async function updatePartnerPermissions(driveFileId, oldEmail, newEmail) {
+  if (!driveFileId) return;
+
+  try {
+    // 1. Fetch current file permissions
+    const listRes = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions?fields=permissions(id,type,role,emailAddress)`);
+    if (!listRes.ok) return;
+
+    const { permissions = [] } = await listRes.json();
+
+    // 2. Revoke public link access ('anyone') if present
+    const publicPerm = permissions.find(p => p.type === "anyone");
+    if (publicPerm) {
+      await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions/${publicPerm.id}`, {
+        method: "DELETE"
+      });
+      console.log("🔒 Revoked public 'anyoneWithLink' access from Drive vault.");
+    }
+
+    // 3. Revoke explicit permission from old partner
+    if (oldEmail && oldEmail.trim() !== "" && oldEmail.toLowerCase() !== (newEmail || "").toLowerCase()) {
+      const oldPerm = permissions.find(
+        p => p.emailAddress && p.emailAddress.toLowerCase() === oldEmail.trim().toLowerCase()
+      );
+      if (oldPerm) {
+        await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions/${oldPerm.id}`, {
+          method: "DELETE"
+        });
+        console.log(`❌ Revoked access for old partner: ${oldEmail}`);
+      }
+    }
+
+    // 4. Grant explicit read-only permission to new partner
+    if (newEmail && newEmail.trim() !== "") {
+      const addRes = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions?sendNotificationEmail=false`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: "reader",
+          type: "user",
+          emailAddress: newEmail.trim()
+        })
+      });
+      if (addRes.ok) {
+        const addData = await addRes.json();
+        console.log(`✅ Granted explicit read-only access to partner: ${newEmail}`, addData);
+      }
+    }
+  } catch (err) {
+    console.error("Failed to update Google Drive permissions:", err);
+  }
 }
 
 function base64EncodeUtf8(str) {
@@ -375,19 +420,16 @@ async function dispatchReportSnapshot(profileData, options = {}) {
     const heartbeats = logs.filter(l => l.type === "HEARTBEAT");
     const browsingLogs = logs.filter(l => l.type !== "HEARTBEAT" && l.type !== "AUDIT");
 
-    // Filter current 7-day logs
     const currentWeekLogs = browsingLogs.filter(l => {
       const time = l.t || l.timestamp || 0;
       return time >= sevenDaysAgoMs;
     });
 
-    // Filter previous 7-day logs (for trend calculation)
     const prevWeekLogs = browsingLogs.filter(l => {
       const time = l.t || l.timestamp || 0;
       return time >= fourteenDaysAgoMs && time < sevenDaysAgoMs;
     });
 
-    // 1. Calculate Sites Visited + Trend
     const currentSitesCount = currentWeekLogs.length;
     const prevSitesCount = prevWeekLogs.length;
     let trendHtml = "";
@@ -405,20 +447,16 @@ async function dispatchReportSnapshot(profileData, options = {}) {
       }
     }
 
-    // 2. Calculate Peak Browsing Hours
     const peakHoursStr = calculatePeakBrowsingHours(currentWeekLogs);
 
-    // 3. Extract & Sort searches DESCENDING (Newest First)
     const validSearches = currentWeekLogs
       .filter(l => (l.q || l.searchQuery) && (l.q || l.searchQuery).trim() !== "" && (l.q || l.searchQuery).trim().toUpperCase() !== "N/A")
       .sort((a, b) => (b.t || b.timestamp || 0) - (a.t || a.timestamp || 0));
 
     const ignoredWarnings = currentWeekLogs.filter(l => l.flag === 1 || (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
 
-    // Check for Incognito Audit Gaps
     const hasIncognitoGaps = heartbeats.some(hb => hb.incognitoAllowed === false);
 
-    // Clean Covenant Eyes-Style Subject Lines
     const userName = profileData.userName || "User";
     let subject = `✅ Virtue Report for ${userName}: All Clear`;
 
@@ -430,7 +468,6 @@ async function dispatchReportSnapshot(profileData, options = {}) {
       subject = `📋 Virtue Report for ${userName}: Closing Summary`;
     }
 
-    // Top Domains
     const domainCounts = {};
     currentWeekLogs.forEach(l => {
       try {
@@ -445,7 +482,6 @@ async function dispatchReportSnapshot(profileData, options = {}) {
     const partnerName = profileData.partnerName || "Partner";
     const dashboardUrl = `https://tbehman.github.io/virtue-extension/?fileId=${profileData.driveFileId}#key=${keyHex}`;
 
-    // Clean Pluralization for Warning Banner
     let warningsHtml = "";
     if (ignoredWarnings.length > 0) {
       const warningCountText = ignoredWarnings.length === 1 ? "1 Restricted Site Visited" : `${ignoredWarnings.length} Restricted Sites Visited`;
@@ -474,7 +510,6 @@ async function dispatchReportSnapshot(profileData, options = {}) {
         `).join('')
       : `<tr><td colspan="2" style="padding: 12px; text-align: center; color: #6c757d; font-size: 13px;">No browsing activity logged</td></tr>`;
 
-    // Take top 10 NEWEST search queries
     const searchRowsHtml = validSearches.length > 0
       ? validSearches.slice(0, 10).map(s => `
           <li style="margin-bottom: 6px; font-size: 13px; color: #212529;">
@@ -484,10 +519,9 @@ async function dispatchReportSnapshot(profileData, options = {}) {
         `).join('')
       : `<li style="font-size: 13px; color: #6c757d;">No search queries recorded</li>`;
 
-    // Dashboard Link / Handoff Banner
     const footerLinkHtml = isHandoff ? `
       <div style="background-color: #e9ecef; padding: 12px; border-radius: 6px; text-align: center; font-size: 12px; color: #495057;">
-        ℹ️️ <em>This is a final closing snapshot. Live web report access for this account has ended.</em>
+        ℹ <em>This is a final closing snapshot. Live web report access for this account has ended.</em>
       </div>
     ` : `
       <div style="text-align: center; border-top: 1px solid #e9ecef; padding-top: 20px; margin-top: 20px;">
@@ -512,7 +546,6 @@ async function dispatchReportSnapshot(profileData, options = {}) {
           </p>
           ${warningsHtml}
           
-          <!-- Executive Clean Scorecard Grid -->
           <table style="width: 100%; border-collapse: separate; border-spacing: 10px; margin-bottom: 25px;">
             <tr>
               <td style="width: 33%; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 14px; text-align: center; vertical-align: top;">
@@ -564,7 +597,7 @@ function flushBufferToDriveJson() {
       device: getDeviceInfo()
     });
 
-    chrome.storage.local.get({ logBuffer: [], driveFileId: "" }, (result) => {
+    chrome.storage.local.get({ logBuffer: [], driveFileId: "", partnerEmail: "" }, (result) => {
       const buffer = result.logBuffer;
       let driveFileId = result.driveFileId;
       if (buffer.length === 0) return;
@@ -573,7 +606,10 @@ function flushBufferToDriveJson() {
 
       if (!driveFileId) {
         findDriveJsonFileOnly((fileId) => { 
-          if (fileId) syncLogsToDriveFile(fileId, uniqueLogs); 
+          if (fileId) {
+            updatePartnerPermissions(fileId, "", result.partnerEmail);
+            syncLogsToDriveFile(fileId, uniqueLogs); 
+          }
         });
       } else {
         syncLogsToDriveFile(driveFileId, uniqueLogs);
@@ -589,7 +625,6 @@ function findDriveJsonFileOnly(callback) {
     .then(data => {
       if (data.files && data.files.length > 0) {
         const fileId = data.files[0].id;
-        makeFileUnlisted(fileId);
         chrome.storage.local.set({ driveFileId: fileId }, () => callback(fileId));
       } else {
         callback(null);
@@ -890,16 +925,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.type === "SEND_PARTNER_HANDOFF_EMAIL") {
-    chrome.storage.local.get(["userName", "partnerName", "driveFileId"], async (profile) => {
-      if (!profile.driveFileId || !request.oldEmail) {
+    chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "driveFileId"], async (profile) => {
+      if (!profile.driveFileId) {
         sendResponse({ success: false });
         return;
       }
 
-      await dispatchReportSnapshot(profile, { 
-        isHandoff: true, 
-        targetEmail: request.oldEmail 
-      });
+      // 1. Send closing report snapshot to outgoing partner
+      if (request.oldEmail) {
+        await dispatchReportSnapshot(profile, { 
+          isHandoff: true, 
+          targetEmail: request.oldEmail 
+        });
+      }
+
+      // 2. Sync Google Drive ACLs: revoke old, grant new explicit reader access
+      await updatePartnerPermissions(profile.driveFileId, request.oldEmail, profile.partnerEmail);
 
       sendResponse({ success: true });
     });
@@ -942,3 +983,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 globalThis.dispatchReportSnapshot = dispatchReportSnapshot;
 globalThis.checkAndSendWeeklyDigest = checkAndSendWeeklyDigest;
 globalThis.flushBufferToDriveJson = flushBufferToDriveJson;
+globalThis.updatePartnerPermissions = updatePartnerPermissions;
