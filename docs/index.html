@@ -572,6 +572,12 @@
     });
 
     async function fetchLogsDirect(fileId, keyHex) {
+      if (!accessToken) {
+        console.warn("No active OAuth token found. Prompting Google Sign-In...");
+        resetAuthUI();
+        return;
+      }
+
       try {
         const driveEndpoint = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
         
@@ -582,9 +588,10 @@
         });
 
         if (response.status === 401 || response.status === 403) {
-          // Token expired or invalid access; prompt re-authentication cleanly
+          console.warn("Token expired or unauthorized (HTTP " + response.status + "). Resetting auth UI.");
           localStorage.removeItem("virtue_gis_token");
           localStorage.removeItem("virtue_gis_expiry");
+          accessToken = null;
           resetAuthUI();
           return;
         }
@@ -664,7 +671,6 @@
       const profileName = metadata.userName || "User";
       const partnerEmail = metadata.partnerEmail || "";
 
-      // Safe date calculation to prevent "Invalid Date"
       let dateStr = "";
       if (globalBrowsingLogs.length > 0) {
         const oldestEntry = globalBrowsingLogs[globalBrowsingLogs.length - 1];
@@ -682,7 +688,6 @@
         }
       }
 
-      // Clean Subheader line
       document.getElementById("dashboardSubheader").textContent = `Accountability Report for ${profileName}${dateStr}`;
 
       const ignoredWarningLogs = globalBrowsingLogs.filter(log => 
