@@ -245,11 +245,25 @@ async function sendGmailNotification({ toEmail, subject, bodyHtml, bodyText }) {
 }
 
 // ==========================================
-// 2. INITIALIZE ALARMS & RULES
+// 2. INITIALIZE ALARMS & RULES (SELF-HEALING)
 // ==========================================
+function setupAlarms() {
+  chrome.alarms.get("flushBuffer", (alarm) => {
+    if (!alarm || (alarm.scheduledTime && alarm.scheduledTime < Date.now())) {
+      chrome.alarms.create("flushBuffer", { periodInMinutes: 1 });
+      console.log("Virtue: Re-created missing/stale flushBuffer alarm");
+    }
+  });
+
+  chrome.alarms.get("checkWeeklyDigest", (alarm) => {
+    if (!alarm || (alarm.scheduledTime && alarm.scheduledTime < Date.now())) {
+      chrome.alarms.create("checkWeeklyDigest", { periodInMinutes: 1440 });
+    }
+  });
+}
+
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.alarms.create("flushBuffer", { periodInMinutes: 1 });
-  chrome.alarms.create("checkWeeklyDigest", { periodInMinutes: 1440 });
+  setupAlarms();
 
   chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist", "userPin"], (result) => {
     const updates = {};
@@ -266,7 +280,13 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-chrome.runtime.onStartup.addListener(() => { updateDynamicSafeSearchRules(); });
+chrome.runtime.onStartup.addListener(() => {
+  setupAlarms();
+  updateDynamicSafeSearchRules();
+});
+
+// Self-heal on every Service Worker wake-up
+setupAlarms();
 
 function updateDynamicSafeSearchRules() {
   const newRules = [
@@ -297,7 +317,15 @@ function addToBuffer(data) {
   chrome.storage.local.get({ logBuffer: [] }, (result) => {
     const buffer = result.logBuffer;
     buffer.push(data);
-    chrome.storage.local.set({ logBuffer: buffer });
+    
+    // Auto-flush immediately if 10 entries accumulate
+    if (buffer.length >= 10) {
+      chrome.storage.local.set({ logBuffer: buffer }, () => {
+        flushBufferToDriveJson();
+      });
+    } else {
+      chrome.storage.local.set({ logBuffer: buffer });
+    }
   });
 }
 
@@ -459,7 +487,7 @@ async function dispatchReportSnapshot(profileData, options = {}) {
     // Dashboard Link / Handoff Banner
     const footerLinkHtml = isHandoff ? `
       <div style="background-color: #e9ecef; padding: 12px; border-radius: 6px; text-align: center; font-size: 12px; color: #495057;">
-        ℹ️ <em>This is a final closing snapshot. Live web report access for this account has ended.</em>
+        ℹ️️ <em>This is a final closing snapshot. Live web report access for this account has ended.</em>
       </div>
     ` : `
       <div style="text-align: center; border-top: 1px solid #e9ecef; padding-top: 20px; margin-top: 20px;">
@@ -913,3 +941,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // ==========================================
 globalThis.dispatchReportSnapshot = dispatchReportSnapshot;
 globalThis.checkAndSendWeeklyDigest = checkAndSendWeeklyDigest;
+globalThis.flushBufferToDriveJson = flushBufferToDriveJson;

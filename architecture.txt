@@ -1,0 +1,148 @@
+================================================================================
+VIRTUE CHROME EXTENSION - ARCHITECTURE & AUTHENTICATION SPECIFICATION
+================================================================================
+
+1. CORE ARCHITECTURE PRINCIPLES
+--------------------------------------------------------------------------------
+- Single Target Platform: Google Chrome (Manifest V3).
+- Fixed Extension ID: Locked permanently via a static RSA public key embedded in 
+  manifest.json.
+- Primary Identity Provider: Chrome's native chrome.identity.getAuthToken API.
+- Modular Deployment: Distinct OAuth credentials for Chrome Service Worker vs. 
+  GitHub Pages Web Dashboard.
+
+
+2. MANIFEST SPECIFICATION (manifest.json)
+--------------------------------------------------------------------------------
+The static "key" property locks the unpacked extension ID to prevent drift across 
+reloads, environments, or developer machines.
+
+Permanent Extension ID: niileninknjehadaiipmenpnbnmcbiid
+
+[manifest.json Format]
+{
+  "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw+VZCegadBdzWs0mPUGbUiWcXX3vQnCLbDn6v1sHV6d90SW8iejdsj0hRQKci7hKfN/vT6zu3zfe4hPqSLq1EFqMaqvm+afUWWnXgfisx75uoMFjYrv6K6dKIm9pWcQKlNdyRlWoe8wqykXSZfV7TJGuC2PW+72TfsY3dzJbbm7f9fpE5o66BqBP31rQagoUf9ry4ddIHFXci2PCC5zQWaBMTJ2mCT/GEe58copDkm34l+NOyL0us/KBzqU2WyQ/jaFyRqVEPYQfURadEy8ffhNTu1rho0CeeC95gl+tdZgyT0+jUtYlMf/OoJUBNhoTTYe3vU6AFe6J4xsqzzO7XwIDAQAB",
+  "name": "Virtue",
+  "version": "1.0",
+  "description": "Transparent web accountability and search telemetry using Google Drive and live web dashboards.",
+  "permissions": [
+    "webNavigation",
+    "storage",
+    "tabs",
+    "alarms",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://*/*",
+    "http://*/*",
+    "https://www.googleapis.com/*",
+    "https://gmail.googleapis.com/*"
+  ],
+  "oauth2": {
+    "client_id": "369511086314-31p73ik75a1boo0gkef1dj5sfo9j93bs.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/Virtue_icon.png",
+      "32": "icons/Virtue_icon.png",
+      "48": "icons/Virtue_icon.png",
+      "128": "icons/Virtue_icon.png"
+    }
+  },
+  "icons": {
+    "16": "icons/Virtue_icon.png",
+    "32": "icons/Virtue_icon.png",
+    "48": "icons/Virtue_icon.png",
+    "128": "icons/Virtue_icon.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "blocked.html",
+        "content.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}
+
+
+3. GOOGLE CLOUD CONSOLE CREDENTIAL MATRIX
+--------------------------------------------------------------------------------
+Google Cloud requires two distinct OAuth client IDs to isolate extension background 
+sync from public web reporting.
+
+A. Credential Name: Virtue Extension
+   - Type: Chrome Extension
+   - Item ID: niileninknjehadaiipmenpnbnmcbiid
+   - Client ID: 369511086314-31p73ik75a1boo0gkef1dj5sfo9j93bs.apps.googleusercontent.com
+   - Usage: Used exclusively in manifest.json and called by background.js.
+
+B. Credential Name: Virtue Web Dashboard
+   - Type: Web Application
+   - Client ID: 369511086314-usedu4mbh8uau4ncd65nvktp387ig0rj.apps.googleusercontent.com
+   - JavaScript Origins: https://tbehman.github.io
+   - Redirect URIs: https://tbehman.github.io/virtue-extension
+   - Usage: Used exclusively in docs/index.html (Line 301) for Google Identity Services.
+
+
+4. BACKGROUND WORKER AUTHENTICATION (background.js)
+--------------------------------------------------------------------------------
+Chrome Service Worker acquires tokens silently without popup windows using 
+the native identity API.
+
+function getChromeAuthToken(interactive = true) {
+  return new Promise((resolve, reject) => {
+    chrome.identity.getAuthToken({ interactive }, (token) => {
+      if (chrome.runtime.lastError) {
+        return reject(new Error(chrome.runtime.lastError.message));
+      }
+      resolve(token);
+    });
+  });
+}
+
+
+5. WEB DASHBOARD INTEGRATION (docs/index.html)
+--------------------------------------------------------------------------------
+Line 301 in docs/index.html defines the Web Application Client ID:
+
+const GOOGLE_CLIENT_ID = "369511086314-usedu4mbh8uau4ncd65nvktp387ig0rj.apps.googleusercontent.com";
+
+
+6. REPOSITORY DEPLOYMENT WORKFLOW
+--------------------------------------------------------------------------------
+All Git operations must be executed relative to the repository root directory 
+(C:\Users\User\Projects\virtue-extension):
+
+git add docs/index.html manifest.json background.js content.js
+git commit -m "Lock Chrome MV3 OAuth architecture with static key"
+git push origin main
+================================================================================

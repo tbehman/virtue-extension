@@ -581,7 +581,15 @@
           }
         });
 
-        if (response.status === 404 || response.status === 403) {
+        if (response.status === 401 || response.status === 403) {
+          // Token expired or invalid access; prompt re-authentication cleanly
+          localStorage.removeItem("virtue_gis_token");
+          localStorage.removeItem("virtue_gis_expiry");
+          resetAuthUI();
+          return;
+        }
+
+        if (response.status === 404) {
           throw new Error("VAULT_MISSING");
         }
 
@@ -624,7 +632,7 @@
       let message = "An unknown error occurred while attempting to render the dashboard.";
 
       if (errCode === "VAULT_MISSING") {
-        title = "⚠️️ Log File Missing or Access Denied";
+        title = "⚠ Log File Missing or Access Denied";
         message = "The Virtue log file could not be accessed. Ensure the file was shared with your Google Account and hasn't been deleted from Drive.";
       } else if (errCode === "DECRYPTION_FAILED") {
         title = "⚠️ Log Data Corrupted or Modified";
