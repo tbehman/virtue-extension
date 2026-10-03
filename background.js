@@ -6,8 +6,8 @@ const LOG_FILE_NAME = "virtue_logs_v1.json";
 const SAFESEARCH_RULE_IDS = [101, 102, 103];
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-// State guard for search query deduplication
 let lastLoggedSearch = { query: "", time: 0 };
+let isSyncingPermissions = false;
 
 // ==========================================
 // 0. UTILITIES & DEVICE IDENTIFICATION
@@ -15,16 +15,22 @@ let lastLoggedSearch = { query: "", time: 0 };
 function getDeviceInfo() {
   const ua = navigator.userAgent;
   let os = "Desktop";
-  
   if (ua.includes("Win")) os = "Windows PC";
   else if (ua.includes("Mac")) os = "Macbook";
   else if (ua.includes("Android")) os = "Android Phone";
   else if (ua.includes("iPhone") || ua.includes("iPad")) os = "iOS Device";
-
   return `${os} (Chrome)`;
 }
 
-// Helper to get active derived key for current user
+async function getDeviceId() {
+  const data = await chrome.storage.local.get("deviceId");
+  if (data.deviceId) return data.deviceId;
+
+  const newDeviceId = "dev_" + Math.random().toString(36).substring(2, 11) + "_" + Date.now();
+  await chrome.storage.local.set({ deviceId: newDeviceId });
+  return newDeviceId;
+}
+
 async function getActiveEncryptionKey() {
   return new Promise((resolve, reject) => {
     chrome.storage.local.get(["userPin", "userEmail"], async (res) => {
@@ -42,11 +48,8 @@ async function getActiveEncryptionKey() {
 
 function sanitizeStringForTesting(str) {
   if (!str) return "";
-  try {
-    return decodeURIComponent(str).replace(/\+/g, " ");
-  } catch (e) {
-    return str.replace(/\+/g, " ");
-  }
+  try { return decodeURIComponent(str).replace(/\+/g, " "); } 
+  catch (e) { return str.replace(/\+/g, " "); }
 }
 
 function extractSearchQuery(urlStr) {
@@ -57,67 +60,133 @@ function extractSearchQuery(urlStr) {
         (domain.includes("bing.com") && url.pathname.includes("/search")) ||
         (domain.includes("duckduckgo.com") && url.pathname === "/")) {
       const queryParam = url.searchParams.get("q");
-      if (queryParam) {
-        return decodeURIComponent(queryParam.replace(/\+/g, " "));
-      }
+      if (queryParam) return decodeURIComponent(queryParam.replace(/\+/g, " "));
     }
   } catch (e) { console.error("URL Parse error:", e); }
   return null;
 }
 
 /**
- * Updates Google Drive File ACLs (Restricted Access + Explicit User Sharing)
+ * Idempotent, Multi-Device Safe Permission Sync Engine
+ * Atomic Order of Operations: Grant (Silently) -> Welcome Email -> Handoff Email -> Revoke Stale
  */
-async function updatePartnerPermissions(driveFileId, oldEmail, newEmail) {
-  if (!driveFileId) return;
+async function reconcilePartnerPermissions() {
+  if (isSyncingPermissions) return;
+
+  const myDeviceId = await getDeviceId();
+  const data = await chrome.storage.local.get([
+    "syncStatus", "partnerEmail", "partnerName", "oldPartnerEmail", 
+    "driveFileId", "syncRetryCount", "userName", "lastInitiatorDeviceId"
+  ]);
+
+  if (data.syncStatus !== "PENDING_SYNC") return;
+
+  if (data.lastInitiatorDeviceId && data.lastInitiatorDeviceId !== myDeviceId) {
+    console.log("ℹ️ Partner change initiated by another device. Syncing silently.");
+    await chrome.storage.local.set({ syncStatus: "SYNCED" });
+    return;
+  }
+
+  const driveFileId = data.driveFileId;
+  const newEmail = (data.partnerEmail || "").trim().toLowerCase();
+  const oldEmail = (data.oldPartnerEmail || "").trim().toLowerCase();
+  const retryCount = data.syncRetryCount || 0;
+
+  if (!driveFileId || !newEmail) return;
+
+  if (retryCount >= 5) {
+    console.warn("⚠️ Max ACL retries reached (5/5). Pausing execution.");
+    return;
+  }
+
+  isSyncingPermissions = true;
 
   try {
-    // 1. Fetch current file permissions
-    const listRes = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions?fields=permissions(id,type,role,emailAddress)`);
-    if (!listRes.ok) return;
+    const listRes = await authenticatedFetch(
+      `https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions?fields=permissions(id,type,role,emailAddress)`
+    );
+
+    if (!listRes.ok) throw new Error(`Drive ACL Fetch Error: ${listRes.status}`);
 
     const { permissions = [] } = await listRes.json();
 
-    // 2. Revoke public link access ('anyone') if present
-    const publicPerm = permissions.find(p => p.type === "anyone");
-    if (publicPerm) {
-      await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions/${publicPerm.id}`, {
-        method: "DELETE"
-      });
-      console.log("🔒 Revoked public 'anyoneWithLink' access from Drive vault.");
-    }
+    // 1. GRANT FIRST (Silenced Google Drive automated email)
+    const hasNewPartnerAccess = permissions.some(
+      p => p.emailAddress && p.emailAddress.toLowerCase() === newEmail
+    );
 
-    // 3. Revoke explicit permission from old partner
-    if (oldEmail && oldEmail.trim() !== "" && oldEmail.toLowerCase() !== (newEmail || "").toLowerCase()) {
-      const oldPerm = permissions.find(
-        p => p.emailAddress && p.emailAddress.toLowerCase() === oldEmail.trim().toLowerCase()
+    if (!hasNewPartnerAccess) {
+      const addRes = await authenticatedFetch(
+        `https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions?sendNotificationEmail=false`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: "reader", type: "user", emailAddress: newEmail })
+        }
       );
-      if (oldPerm) {
-        await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions/${oldPerm.id}`, {
-          method: "DELETE"
+
+      if (addRes.status === 400 || addRes.status === 404) {
+        console.error("❌ Invalid target partner email. Executing local profile rollback...");
+        await chrome.storage.local.set({
+          partnerEmail: oldEmail,
+          syncStatus: "ERROR_INVALID_EMAIL",
+          syncRetryCount: 0
         });
-        console.log(`❌ Revoked access for old partner: ${oldEmail}`);
+        isSyncingPermissions = false;
+        return;
+      }
+
+      if (!addRes.ok) throw new Error(`Drive ACL Grant Failed: ${addRes.status}`);
+      console.log(`✅ Granted explicit reader access silently to: ${newEmail}`);
+
+      // Dispatch initial Welcome Snapshot Email to new partner
+      await dispatchReportSnapshot(
+        { userName: data.userName, partnerName: data.partnerName, partnerEmail: newEmail, driveFileId },
+        { isWelcome: true, targetEmail: newEmail }
+      );
+    }
+
+    // 2. SEND HANDOFF EMAIL to outgoing partner
+    if (oldEmail && oldEmail !== newEmail) {
+      const isOldPartnerListed = permissions.some(
+        p => p.emailAddress && p.emailAddress.toLowerCase() === oldEmail
+      );
+
+      if (isOldPartnerListed) {
+        console.log(`Sending closing handoff snapshot email to ${oldEmail}...`);
+        await dispatchReportSnapshot(
+          { userName: data.userName, partnerEmail: newEmail, driveFileId },
+          { isHandoff: true, targetEmail: oldEmail }
+        );
       }
     }
 
-    // 4. Grant explicit read-only permission to new partner
-    if (newEmail && newEmail.trim() !== "") {
-      const addRes = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions?sendNotificationEmail=false`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role: "reader",
-          type: "user",
-          emailAddress: newEmail.trim()
-        })
-      });
-      if (addRes.ok) {
-        const addData = await addRes.json();
-        console.log(`✅ Granted explicit read-only access to partner: ${newEmail}`, addData);
+    // 3. REVOKE SECOND: Clean up old partner and public 'anyoneWithLink' permissions
+    for (const perm of permissions) {
+      if (perm.role === "owner") continue;
+
+      if (perm.type === "anyone" || (perm.emailAddress && perm.emailAddress.toLowerCase() !== newEmail)) {
+        await authenticatedFetch(
+          `https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions/${perm.id}`,
+          { method: "DELETE" }
+        );
+        console.log(`🔒 Revoked stale/public access ID: ${perm.id} (${perm.emailAddress || 'anyone'})`);
       }
     }
+
+    await chrome.storage.local.set({
+      syncStatus: "SYNCED",
+      syncRetryCount: 0,
+      oldPartnerEmail: newEmail
+    });
+
+    console.log("✅ Partner permissions successfully synchronized and verified.");
+
   } catch (err) {
-    console.error("Failed to update Google Drive permissions:", err);
+    console.error("ACL Reconcile Exception:", err);
+    await chrome.storage.local.set({ syncRetryCount: retryCount + 1 });
+  } finally {
+    isSyncingPermissions = false;
   }
 }
 
@@ -130,7 +199,6 @@ function base64EncodeUtf8(str) {
   .replace(/=+$/, '');
 }
 
-// Helper to calculate peak 2-hour browsing window
 function calculatePeakBrowsingHours(logs) {
   if (!logs || logs.length === 0) return "N/A";
 
@@ -163,10 +231,7 @@ function calculatePeakBrowsingHours(logs) {
     return `${hour12} ${period}`;
   };
 
-  const startStr = formatHour(peakStartHour);
-  const endStr = formatHour((peakStartHour + 2) % 24);
-
-  return `${startStr} – ${endStr}`;
+  return `${formatHour(peakStartHour)} – ${formatHour((peakStartHour + 2) % 24)}`;
 }
 
 // ==========================================
@@ -296,7 +361,6 @@ function setupAlarms() {
   chrome.alarms.get("flushBuffer", (alarm) => {
     if (!alarm || (alarm.scheduledTime && alarm.scheduledTime < Date.now())) {
       chrome.alarms.create("flushBuffer", { periodInMinutes: 1 });
-      console.log("Virtue: Re-created missing/stale flushBuffer alarm");
     }
   });
 
@@ -328,9 +392,9 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onStartup.addListener(() => {
   setupAlarms();
   updateDynamicSafeSearchRules();
+  reconcilePartnerPermissions();
 });
 
-// Self-heal on every Service Worker wake-up
 setupAlarms();
 
 function updateDynamicSafeSearchRules() {
@@ -362,8 +426,6 @@ function addToBuffer(data) {
   chrome.storage.local.get({ logBuffer: [] }, (result) => {
     const buffer = result.logBuffer;
     buffer.push(data);
-    
-    // Auto-flush immediately if 10 entries accumulate
     if (buffer.length >= 10) {
       chrome.storage.local.set({ logBuffer: buffer }, () => {
         flushBufferToDriveJson();
@@ -399,6 +461,7 @@ async function checkAndSendWeeklyDigest() {
 
 async function dispatchReportSnapshot(profileData, options = {}) {
   const isHandoff = options.isHandoff || false;
+  const isWelcome = options.isWelcome || false;
   const targetEmail = options.targetEmail || profileData.partnerEmail;
 
   try {
@@ -420,11 +483,7 @@ async function dispatchReportSnapshot(profileData, options = {}) {
     const heartbeats = logs.filter(l => l.type === "HEARTBEAT");
     const browsingLogs = logs.filter(l => l.type !== "HEARTBEAT" && l.type !== "AUDIT");
 
-    const currentWeekLogs = browsingLogs.filter(l => {
-      const time = l.t || l.timestamp || 0;
-      return time >= sevenDaysAgoMs;
-    });
-
+    const currentWeekLogs = browsingLogs.filter(l => (l.t || l.timestamp || 0) >= sevenDaysAgoMs);
     const prevWeekLogs = browsingLogs.filter(l => {
       const time = l.t || l.timestamp || 0;
       return time >= fourteenDaysAgoMs && time < sevenDaysAgoMs;
@@ -437,50 +496,41 @@ async function dispatchReportSnapshot(profileData, options = {}) {
     if (prevSitesCount > 0) {
       const diff = currentSitesCount - prevSitesCount;
       const pctChange = Math.round((diff / prevSitesCount) * 100);
-
-      if (pctChange > 0) {
-        trendHtml = `<div style="font-size: 11px; color: #d97706; font-weight: 600; margin-top: 4px;">▲ ${pctChange}% vs. last week</div>`;
-      } else if (pctChange < 0) {
-        trendHtml = `<div style="font-size: 11px; color: #198754; font-weight: 600; margin-top: 4px;">▼ ${Math.abs(pctChange)}% vs. last week</div>`;
-      } else {
-        trendHtml = `<div style="font-size: 11px; color: #6c757d; font-weight: 500; margin-top: 4px;">No change vs. last week</div>`;
-      }
+      if (pctChange > 0) trendHtml = `<div style="font-size: 11px; color: #d97706; font-weight: 600; margin-top: 4px;">▲ ${pctChange}% vs. last week</div>`;
+      else if (pctChange < 0) trendHtml = `<div style="font-size: 11px; color: #198754; font-weight: 600; margin-top: 4px;">▼ ${Math.abs(pctChange)}% vs. last week</div>`;
+      else trendHtml = `<div style="font-size: 11px; color: #6c757d; font-weight: 500; margin-top: 4px;">No change vs. last week</div>`;
     }
 
     const peakHoursStr = calculatePeakBrowsingHours(currentWeekLogs);
-
     const validSearches = currentWeekLogs
       .filter(l => (l.q || l.searchQuery) && (l.q || l.searchQuery).trim() !== "" && (l.q || l.searchQuery).trim().toUpperCase() !== "N/A")
       .sort((a, b) => (b.t || b.timestamp || 0) - (a.t || a.timestamp || 0));
 
     const ignoredWarnings = currentWeekLogs.filter(l => l.flag === 1 || (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
-
     const hasIncognitoGaps = heartbeats.some(hb => hb.incognitoAllowed === false);
 
     const userName = profileData.userName || "User";
-    let subject = `✅ Virtue Report for ${userName}: All Clear`;
-
-    if (ignoredWarnings.length > 0 || hasIncognitoGaps) {
-      subject = `⚠️ Virtue Report for ${userName}: Activity Needs Review`;
-    }
-
-    if (isHandoff) {
-      subject = `📋 Virtue Report for ${userName}: Closing Summary`;
-    }
-
-    const domainCounts = {};
-    currentWeekLogs.forEach(l => {
-      try {
-        if (l.url && l.url.startsWith("http")) {
-          const domain = new URL(l.url).hostname.replace('www.', '');
-          domainCounts[domain] = (domainCounts[domain] || 0) + 1;
-        }
-      } catch (e) {}
-    });
-    const topDomains = Object.entries(domainCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-
     const partnerName = profileData.partnerName || "Partner";
     const dashboardUrl = `https://tbehman.github.io/virtue-extension/?fileId=${profileData.driveFileId}#key=${keyHex}`;
+
+    let subject = `✅ Virtue Report for ${userName}: All Clear`;
+    if (ignoredWarnings.length > 0 || hasIncognitoGaps) subject = `⚠️ Virtue Report for ${userName}: Activity Needs Review`;
+    if (isHandoff) subject = `📋 Virtue Report for ${userName}: Closing Summary`;
+    if (isWelcome) subject = `🤝 Welcome! You are now an Accountability Partner for ${userName}`;
+
+    let welcomeHeaderHtml = "";
+    if (isWelcome) {
+      welcomeHeaderHtml = `
+        <div style="background-color: #f1f8f5; border-left: 4px solid #198754; padding: 16px; margin-bottom: 20px; border-radius: 4px;">
+          <p style="margin: 0 0 8px 0; font-size: 15px; font-weight: bold; color: #0f5132;">
+            Thank you for stepping up to support ${userName}!
+          </p>
+          <p style="margin: 0; font-size: 13px; color: #146c43; line-height: 1.5;">
+            ${userName} has chosen you as their trusted accountability partner to walk in digital integrity and strengthen their walk of faith. Below is their current activity snapshot, along with access to their live web dashboard.
+          </p>
+        </div>
+      `;
+    }
 
     let warningsHtml = "";
     if (ignoredWarnings.length > 0) {
@@ -500,6 +550,17 @@ async function dispatchReportSnapshot(profileData, options = {}) {
         </div>
       `;
     }
+
+    const domainCounts = {};
+    currentWeekLogs.forEach(l => {
+      try {
+        if (l.url && l.url.startsWith("http")) {
+          const domain = new URL(l.url).hostname.replace('www.', '');
+          domainCounts[domain] = (domainCounts[domain] || 0) + 1;
+        }
+      } catch (e) {}
+    });
+    const topDomains = Object.entries(domainCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
 
     const domainRowsHtml = topDomains.length > 0 
       ? topDomains.map(([domain, count]) => `
@@ -525,7 +586,7 @@ async function dispatchReportSnapshot(profileData, options = {}) {
       </div>
     ` : `
       <div style="text-align: center; border-top: 1px solid #e9ecef; padding-top: 20px; margin-top: 20px;">
-        <a href="${dashboardUrl}" target="_blank" style="background-color: #198754; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">View Full Web Dashboard ➔</a>
+        <a href="${dashboardUrl}" target="_blank" style="background-color: #198754; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">View Live Web Dashboard ➔</a>
       </div>
     `;
 
@@ -538,12 +599,10 @@ async function dispatchReportSnapshot(profileData, options = {}) {
             <img src="https://raw.githubusercontent.com/tbehman/virtue-extension/main/docs/virtue_logo.png" alt="Virtue Logo" style="height: 48px; width: auto; vertical-align: middle;">
             <h2 style="margin: 0; color: #198754; font-size: 22px;">Virtue Accountability Report</h2>
           </div>
+          
           <p style="font-size: 14px; color: #212529;">Hello ${partnerName},</p>
-          <p style="font-size: 14px; color: #6c757d; line-height: 1.5;">
-            ${isHandoff 
-              ? `This is a final closing accountability summary for <strong>${userName}</strong> as of their partner update.` 
-              : `Here is the latest accountability report snapshot for <strong>${userName}</strong>.`}
-          </p>
+          
+          ${welcomeHeaderHtml}
           ${warningsHtml}
           
           <table style="width: 100%; border-collapse: separate; border-spacing: 10px; margin-bottom: 25px;">
@@ -600,6 +659,9 @@ function flushBufferToDriveJson() {
     chrome.storage.local.get({ logBuffer: [], driveFileId: "", partnerEmail: "" }, (result) => {
       const buffer = result.logBuffer;
       let driveFileId = result.driveFileId;
+
+      reconcilePartnerPermissions();
+
       if (buffer.length === 0) return;
 
       let uniqueLogs = Array.from(new Set(buffer.map(a => a.url || a.t))).map(key => buffer.find(a => (a.url || a.t) === key));
@@ -607,7 +669,6 @@ function flushBufferToDriveJson() {
       if (!driveFileId) {
         findDriveJsonFileOnly((fileId) => { 
           if (fileId) {
-            updatePartnerPermissions(fileId, "", result.partnerEmail);
             syncLogsToDriveFile(fileId, uniqueLogs); 
           }
         });
@@ -727,15 +788,18 @@ function syncLogsToDriveFile(fileId, newLogs) {
         headers: uploadHeaders,
         body: JSON.stringify(updatedPayload)
       })
-      .then(uploadRes => {
+      .then(async (uploadRes) => {
         if (uploadRes.status === 412) {
           const randomJitter = Math.floor(Math.random() * 500) + 200;
           setTimeout(() => syncLogsToDriveFile(fileId, newLogs), randomJitter);
         } else if (uploadRes.ok) {
           chrome.storage.local.set({ logBuffer: [] });
+        } else {
+          const errorBody = await uploadRes.text();
+          console.warn(`Upload HTTP Error ${uploadRes.status}:`, errorBody);
         }
       })
-      .catch(err => console.error("Upload error:", err));
+      .catch(err => console.error("Upload network error:", err));
     });
   })
   .catch(err => {
@@ -877,6 +941,29 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
 // 6. MESSAGE LISTENERS FOR POPUP & RE-AUTH ACTIONS
 // ==========================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "updateProfile" || request.type === "UPDATE_PROFILE") {
+    const newProfile = request.profileData || request.profile || {};
+    const oldEmail = (request.oldPartnerEmail || "").trim().toLowerCase();
+    const newEmail = (newProfile.partnerEmail || "").trim().toLowerCase();
+
+    (async () => {
+      const deviceId = await getDeviceId();
+
+      await chrome.storage.local.set({
+        ...newProfile,
+        oldPartnerEmail: oldEmail,
+        syncStatus: "PENDING_SYNC",
+        syncRetryCount: 0,
+        lastInitiatorDeviceId: deviceId
+      });
+
+      reconcilePartnerPermissions();
+    })();
+
+    sendResponse({ success: true });
+    return false;
+  }
+
   if (request.type === "TRIGGER_INTERACTIVE_AUTH") {
     fetchNewToken(true, (token) => {
       clearAuthFailureBanner();
@@ -931,7 +1018,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
       }
 
-      // 1. Send closing report snapshot to outgoing partner
       if (request.oldEmail) {
         await dispatchReportSnapshot(profile, { 
           isHandoff: true, 
@@ -939,9 +1025,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
       }
 
-      // 2. Sync Google Drive ACLs: revoke old, grant new explicit reader access
-      await updatePartnerPermissions(profile.driveFileId, request.oldEmail, profile.partnerEmail);
-
+      reconcilePartnerPermissions();
       sendResponse({ success: true });
     });
     return true;
@@ -980,7 +1064,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // ==========================================
 // 7. EXPOSE HELPERS FOR DEVTOOLS CONSOLE TESTING
 // ==========================================
+globalThis.authenticatedFetch = authenticatedFetch;
 globalThis.dispatchReportSnapshot = dispatchReportSnapshot;
 globalThis.checkAndSendWeeklyDigest = checkAndSendWeeklyDigest;
 globalThis.flushBufferToDriveJson = flushBufferToDriveJson;
-globalThis.updatePartnerPermissions = updatePartnerPermissions;
+globalThis.reconcilePartnerPermissions = reconcilePartnerPermissions;

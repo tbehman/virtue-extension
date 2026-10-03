@@ -7,7 +7,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const authStepContainer = document.getElementById("authStepContainer");
   const authGoogleBtn = document.getElementById("authGoogleBtn");
-  const existingVaultNotice = document.getElementById("existingVaultNotice");
   const profileFormFields = document.getElementById("profileFormFields");
 
   const userNameInput = document.getElementById("userNameInput");
@@ -50,27 +49,30 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   let localState = {};
 
-  // ==========================================
-  // 1. INITIALIZATION & ROUTING
-  // ==========================================
   async function initPopup() {
     chrome.storage.local.get([
       "userEmail", "userName", "partnerName", "partnerEmail", "userPin",
-      "driveFileId", "filterMode", "customBlacklist", "customWhitelist"
+      "driveFileId", "filterMode", "customBlacklist", "customWhitelist", "syncStatus"
     ], async (res) => {
-      localState = res;
+      localState = res || {};
 
-      if (!res.userEmail) {
+      if (!localState.userEmail) {
         showScreen("setup");
         authStepContainer.classList.remove("hidden");
         profileFormFields.classList.add("hidden");
-      } else if (!res.userName || !res.partnerEmail || !res.userPin) {
+      } else if (!localState.userName || !localState.partnerEmail || !localState.userPin) {
         showScreen("setup");
         authStepContainer.classList.add("hidden");
         profileFormFields.classList.remove("hidden");
       } else {
         showScreen("dashboard");
         renderDashboardView();
+
+        // Check for rollback alert
+        if (localState.syncStatus === "ERROR_INVALID_EMAIL") {
+          alert("⚠️ The partner email you entered was invalid and could not be granted access on Google Drive. Profile reverted to previous partner.");
+          chrome.storage.local.set({ syncStatus: "SYNCED" });
+        }
       }
     });
   }
@@ -85,9 +87,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (screenName === "settings") settingsScreen.classList.remove("hidden");
   }
 
-  // ==========================================
-  // 2. DASHBOARD LINK & DECRYPTION KEY DERIVATION
-  // ==========================================
   async function renderDashboardView() {
     accountDisplay.textContent = localState.userEmail || "Connected";
     partnerDisplayEmail.textContent = localState.partnerEmail || "None Assigned";
@@ -98,15 +97,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const { keyHex } = await deriveKeyFromPin(pin, email);
       const fileId = localState.driveFileId || "";
-      const fullDashboardUrl = `https://tbehman.github.io/virtue-extension/?fileId=${fileId}#key=${keyHex}`;
-
-      viewSheetLink.href = fullDashboardUrl;
+      viewSheetLink.href = `https://tbehman.github.io/virtue-extension/?fileId=${fileId}#key=${keyHex}`;
     } catch (e) {
       console.error("Error generating dashboard encryption key:", e);
     }
   }
 
-  // Force-attach derived key on click event
   viewSheetLink.addEventListener("click", async (e) => {
     e.preventDefault();
     const pin = localState.userPin || "1234";
@@ -122,9 +118,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // ==========================================
-  // 3. AUTHENTICATION & SETUP FLOW
-  // ==========================================
   authGoogleBtn.addEventListener("click", () => {
     chrome.identity.getAuthToken({ interactive: true }, (token) => {
       if (chrome.runtime.lastError || !token) {
@@ -132,24 +125,21 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      fetch("https://www.googleapis.com/oauth2/02/userinfo", {
+      fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
         headers: { Authorization: `Bearer ${token}` }
       })
       .then(res => res.json())
       .then(profile => {
-        const userEmail = profile.email;
+        const userEmail = (profile.email || "").trim().toLowerCase();
         chrome.storage.local.set({ userEmail, authToken: token }, () => {
           localState.userEmail = userEmail;
           authStepContainer.classList.add("hidden");
           profileFormFields.classList.remove("hidden");
         });
       })
-      .catch(() => {
-        chrome.storage.local.set({ userEmail: "connected.user@gmail.com", authToken: token }, () => {
-          localState.userEmail = "connected.user@gmail.com";
-          authStepContainer.classList.add("hidden");
-          profileFormFields.classList.remove("hidden");
-        });
+      .catch((err) => {
+        console.error("Auth Error:", err);
+        alert("Could not retrieve Google profile details. Please try again.");
       });
     });
   });
@@ -161,7 +151,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   completeSetupBtn.addEventListener("click", () => {
     const userName = userNameInput.value.trim();
     const partnerName = partnerNameInput.value.trim();
-    const partnerEmail = partnerEmailInput.value.trim();
+    const partnerEmail = partnerEmailInput.value.trim().toLowerCase();
     const userPin = masterPinInput.value.trim();
 
     if (!userName || !partnerName || !partnerEmail || userPin.length !== 4) {
@@ -181,13 +171,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       Object.assign(localState, updates);
       showScreen("dashboard");
       renderDashboardView();
+
+      chrome.runtime.sendMessage({
+        action: "updateProfile",
+        profileData: updates,
+        oldPartnerEmail: ""
+      });
       chrome.runtime.sendMessage({ type: "TRIGGER_INTERACTIVE_AUTH" });
     });
   });
 
-  // ==========================================
-  // 4. PIN SECURITY & SETTINGS ROUTING
-  // ==========================================
   openSettingsBtn.addEventListener("click", () => {
     pinPromptArea.classList.remove("hidden");
     verifyPinInput.value = "";
@@ -241,9 +234,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
-  // ==========================================
-  // 5. SETTINGS MANAGEMENT
-  // ==========================================
   function loadSettingsScreen() {
     editUserNameInput.value = localState.userName || "";
     editPartnerNameInput.value = localState.partnerName || "";
@@ -261,7 +251,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   saveProfileBtn.addEventListener("click", () => {
     const newUserName = editUserNameInput.value.trim();
     const newPartnerName = editPartnerNameInput.value.trim();
-    const newPartnerEmail = editPartnerEmailInput.value.trim();
+    const newPartnerEmail = editPartnerEmailInput.value.trim().toLowerCase();
+    const oldPartnerEmail = (localState.partnerEmail || "").trim().toLowerCase();
 
     if (!newUserName || !newPartnerName || !newPartnerEmail) {
       alert("Profile fields cannot be empty.");
@@ -275,15 +266,23 @@ document.addEventListener("DOMContentLoaded", async () => {
       settingsLastUpdated: Date.now()
     };
 
+    // 1. Immediately dispatch fire-and-forget message to Service Worker
+    chrome.runtime.sendMessage({
+      action: "updateProfile",
+      profileData: updates,
+      oldPartnerEmail: oldPartnerEmail
+    });
+
+    // 2. Persist locally and update UI state
     chrome.storage.local.set(updates, () => {
       Object.assign(localState, updates);
+
       profileStatusText.style.display = "block";
-      profileStatusText.textContent = "✓ Profile saved!";
-      setTimeout(() => { profileStatusText.style.display = "none"; }, 2500);
+      profileStatusText.textContent = "✓ Profile saved & syncing permissions...";
+      setTimeout(() => { profileStatusText.style.display = "none"; }, 3000);
     });
   });
 
-  // Mode & Domain Management
   modeBlocklistBtn.addEventListener("click", () => setFilterMode("blocklist"));
   modeWhitelistBtn.addEventListener("click", () => setFilterMode("whitelist"));
 
@@ -349,6 +348,5 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // Run initialization
   initPopup();
 });
