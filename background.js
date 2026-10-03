@@ -525,8 +525,11 @@ async function dispatchReportSnapshot(profileData, options = {}) {
           <p style="margin: 0 0 8px 0; font-size: 15px; font-weight: bold; color: #0f5132;">
             Thank you for stepping up to support ${userName}!
           </p>
+          <p style="margin: 0 0 10px 0; font-size: 13px; color: #146c43; line-height: 1.5;">
+            ${userName} has selected you as a trusted accountability partner in the pursuit of digital integrity. Virtue exists to help believers live out 2 Peter 1:5a—<em>"And beside this, giving all diligence, add to your faith <strong style="color: #198754;">virtue</strong>..."</em>
+          </p>
           <p style="margin: 0; font-size: 13px; color: #146c43; line-height: 1.5;">
-            ${userName} has chosen you as their trusted accountability partner to walk in digital integrity and strengthen their walk of faith. Below is their current activity snapshot, along with access to their live web dashboard.
+            Below is a summary of current activity, along with access to the live web dashboard.
           </p>
         </div>
       `;
@@ -596,7 +599,9 @@ async function dispatchReportSnapshot(profileData, options = {}) {
       <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8f9fa; margin: 0; padding: 20px;">
         <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e9ecef; overflow: hidden; padding: 25px;">
           <div style="display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #198754; padding-bottom: 15px; margin-bottom: 20px;">
-            <img src="https://raw.githubusercontent.com/tbehman/virtue-extension/main/docs/virtue_logo.png" alt="Virtue Logo" style="height: 48px; width: auto; vertical-align: middle;">
+            <div style="background-color: #ffffff; padding: 6px; border-radius: 8px; display: inline-block; border: 1px solid #e9ecef;">
+              <img src="https://raw.githubusercontent.com/tbehman/virtue-extension/main/docs/virtue_logo.png" alt="Virtue Logo" style="height: 44px; width: auto; display: block;">
+            </div>
             <h2 style="margin: 0; color: #198754; font-size: 22px;">Virtue Accountability Report</h2>
           </div>
           
