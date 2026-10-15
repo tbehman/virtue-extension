@@ -77,26 +77,34 @@
   </div>
 
   <div id="dashboardScreen" class="screen hidden">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 0 2px;">
+    <!-- TOOLBAR / STATUS HEADER -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 0 2px;">
       <span id="syncBadge" class="badge">🟢 LIVE SYNC ACTIVE</span>
-      <button id="openSettingsBtn" title="Settings" style="background: none; border: none; font-size: 12px; cursor: pointer; color: var(--text-muted); font-weight: 600;">⚙️ Settings</button>
+      <button id="openSettingsBtn" title="Settings" class="btn-icon-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        <span>Settings</span>
+      </button>
     </div>
 
-    <div class="card">
-      <div style="margin-bottom: 10px;">
+    <!-- ACCOUNT INFO CARD -->
+    <div class="card" style="padding: 12px 14px; margin-bottom: 12px;">
+      <div style="padding-bottom: 8px; border-bottom: 1px solid var(--border);">
         <span class="info-label">CONNECTED ACCOUNT</span>
         <div id="accountDisplay" class="info-value">Loading...</div>
       </div>
-      <div>
+      <div style="padding-top: 8px;">
         <span class="info-label">ACCOUNTABILITY PARTNER</span>
         <div id="partnerDisplayEmail" class="info-value">Loading...</div>
       </div>
     </div>
 
-    <a id="viewSheetLink" href="#" target="_blank" class="btn btn-primary" style="text-decoration: none; margin-bottom: 8px;">
-      <span>📊 Open Accountability Report</span>
+    <!-- MAIN ACTION BUTTON -->
+    <a id="viewSheetLink" href="#" target="_blank" class="btn btn-primary" style="text-decoration: none; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+      <span>Open Accountability Report</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
     </a>
 
+    <!-- UNLOCK PIN AREA -->
     <div id="pinPromptArea" class="card hidden" style="border-color: var(--primary);">
       <label id="pinLabel" for="verifyPinInput" class="info-label" style="color: var(--primary);">Enter 4-Digit Master PIN</label>
       <div style="display: flex; gap: 6px; margin-top: 4px;">

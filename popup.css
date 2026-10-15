@@ -103,7 +103,7 @@ body {
 
 .info-value {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--text-main);
   word-break: break-all;
 }
@@ -150,6 +150,27 @@ body {
   border-color: #c1c9d0; 
 }
 
+/* Frameless Icon Action (Toolbar / Settings) */
+.btn-icon-link {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.btn-icon-link:hover {
+  background-color: #e9ecef;
+  color: var(--text-main);
+}
+
 /* Defined High-Contrast Input Fields */
 input[type="text"], input[type="password"], input[type="email"] {
   width: 100%;
@@ -193,7 +214,7 @@ input:focus {
   transition: all 0.15s ease;
 }
 
-/* Active Segment Pill (Clean White Card on Gray Track) */
+/* Active Segment Pill */
 .btn-segmented.active {
   background: #ffffff;
   color: var(--primary);
