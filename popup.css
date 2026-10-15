@@ -1,15 +1,16 @@
 :root {
   --primary: #198754;
   --primary-hover: #146c43;
-  --bg: #f8f9fa;
+  --bg: #f1f3f5;
   --card-bg: #ffffff;
   --text-main: #212529;
-  --text-muted: #6c757d;
+  --text-muted: #5f666d;
   --danger: #dc3545;
-  --border: #e9ecef;
-  --warning-bg: #fff8e1;
-  --warning-border: #ffc107;
-  --warning-text: #856404;
+  --border: #dce1e6;
+  --input-bg: #f8f9fa;
+  --warning-bg: #fffcf0;
+  --warning-border: #f2d388;
+  --warning-text: #78350f;
 }
 
 * {
@@ -70,8 +71,8 @@ body {
 
 /* Status Badge Pill */
 .badge {
-  background: #e6f4ea;
-  color: #137333;
+  background: #e8f5e9;
+  color: #1b5e20;
   padding: 4px 10px;
   border-radius: 12px;
   font-size: 11px;
@@ -92,7 +93,7 @@ body {
 
 .info-label {
   font-size: 10px;
-  font-weight: 500; /* Subdued regular weight */
+  font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -102,7 +103,7 @@ body {
 
 .info-value {
   font-size: 13px;
-  font-weight: 700; /* Bold email display */
+  font-weight: 700;
   color: var(--text-main);
   word-break: break-all;
 }
@@ -120,34 +121,62 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: background-color 0.15s ease;
+  transition: all 0.15s ease;
 }
 
-.btn-primary { background: var(--primary); color: #ffffff; }
-.btn-primary:hover { background: var(--primary-hover); }
-.btn-secondary { background: #e9ecef; color: #495057; }
-.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-main); }
+.btn-primary { 
+  background: var(--primary); 
+  color: #ffffff; 
+}
+.btn-primary:hover { 
+  background: var(--primary-hover); 
+}
 
+.btn-secondary { 
+  background: #e9ecef; 
+  color: var(--text-main); 
+}
+.btn-secondary:hover { 
+  background: #dee2e6; 
+}
+
+.btn-outline { 
+  background: #ffffff; 
+  border: 1px solid var(--border); 
+  color: var(--text-main); 
+}
+.btn-outline:hover { 
+  background: #f8f9fa; 
+  border-color: #c1c9d0; 
+}
+
+/* Defined High-Contrast Input Fields */
 input[type="text"], input[type="password"], input[type="email"] {
   width: 100%;
-  padding: 7px 10px;
+  padding: 8px 10px;
   margin: 4px 0 10px 0;
+  background-color: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 12px;
+  color: var(--text-main);
+  outline: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 input:focus {
-  outline: none;
+  background-color: #ffffff;
   border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(25, 135, 84, 0.12);
 }
 
+/* iOS / SaaS Style Segmented Control Track */
 .segmented-control {
   display: flex;
-  gap: 4px;
-  background: #f1f3f4;
+  gap: 3px;
+  background: #e9ecef;
   padding: 3px;
-  border-radius: 6px;
+  border-radius: 8px;
   margin-bottom: 10px;
 }
 
@@ -159,13 +188,16 @@ input:focus {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 6px;
   font-weight: 600;
+  transition: all 0.15s ease;
 }
 
+/* Active Segment Pill (Clean White Card on Gray Track) */
 .btn-segmented.active {
-  background: var(--primary);
-  color: #ffffff;
+  background: #ffffff;
+  color: var(--primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 ul.domain-list {
@@ -179,9 +211,13 @@ ul.domain-list li {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 5px 0;
+  padding: 6px 0;
   border-bottom: 1px solid var(--border);
   font-size: 12px;
+}
+
+ul.domain-list li:last-child {
+  border-bottom: none;
 }
 
 .delete-btn {

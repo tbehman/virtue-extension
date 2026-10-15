@@ -138,26 +138,23 @@
 
     <!-- WEEKLY ACCOUNTABILITY REPORT STATUS CARD -->
     <div class="card" style="margin-bottom: 10px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-        <div class="info-label" style="font-size: 11px; margin-bottom: 0;">WEEKLY ACCOUNTABILITY REPORT</div>
-        <span style="font-size: 10px; font-weight: 700; color: #198754; background: #e8f5e9; padding: 2px 6px; border-radius: 4px;">● ON SCHEDULE</span>
-      </div>
-      <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px; line-height: 1.35;">
+      <div class="info-label" style="font-size: 11px; margin-bottom: 6px;">WEEKLY ACCOUNTABILITY REPORT</div>
+      <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.35;">
         Sent automatically every Monday at 9:00 AM local time.
       </p>
 
-      <div style="display: flex; gap: 6px; margin-bottom: 10px;">
-        <div style="flex: 1; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 6px 8px;">
-          <div style="font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Last Sent</div>
-          <div id="lastSentDisplay" style="font-size: 11px; font-weight: 700; color: var(--text-main); margin-top: 2px;">Never</div>
+      <div style="background: var(--input-bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span style="font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Last Sent</span>
+          <span id="lastSentDisplay" style="font-size: 11px; font-weight: 700; color: var(--text-main);">Never</span>
         </div>
-        <div style="flex: 1; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 6px 8px;">
-          <div style="font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Next Scheduled</div>
-          <div id="nextDueDisplay" style="font-size: 11px; font-weight: 700; color: var(--text-main); margin-top: 2px;">Mon, 9:00 AM</div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Next Scheduled</span>
+          <span id="nextDueDisplay" style="font-size: 11px; font-weight: 700; color: var(--primary);">Mon, Oct 19, 9:00 AM</span>
         </div>
       </div>
 
-      <button id="btnSendTestReport" class="btn btn-outline" style="font-size: 11px; padding: 6px; width: 100%; background: #ffffff;">
+      <button id="btnSendTestReport" class="btn btn-outline" style="font-size: 11px; padding: 7px; width: 100%;">
         Send Test Report Now
       </button>
       <p id="testReportFeedback" style="font-size: 11px; text-align: center; margin-top: 6px; margin-bottom: 0; display: none;"></p>
