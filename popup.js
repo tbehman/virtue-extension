@@ -1,8 +1,35 @@
 import { deriveKeyFromPin } from './cryptoUtils.js';
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Detect non-Chrome Chromium browsers (Edge, Brave, Opera, etc.)
+  const isNonChromeChromium = /Edg|OPR|Brave/.test(navigator.userAgent) || !/Chrome/.test(navigator.userAgent);
+
+  const warningCard = document.getElementById("browserWarningCard");
+  const setupScreen = document.getElementById("setupScreen");
+  const dashboardScreen = document.getElementById("dashboardScreen");
+  const settingsScreen = document.getElementById("settingsScreen");
+
+  if (isNonChromeChromium) {
+    if (warningCard) warningCard.style.display = "block";
+    toggleHidden(setupScreen, true);
+    toggleHidden(dashboardScreen, true);
+    toggleHidden(settingsScreen, true);
+    return; // Halt further initialization on non-Chrome browsers
+  } else {
+    if (warningCard) warningCard.style.display = "none";
+  }
+
   initPopup();
 });
+
+function toggleHidden(element, isHidden) {
+  if (!element) return;
+  if (isHidden) {
+    element.classList.add("hidden");
+  } else {
+    element.classList.remove("hidden");
+  }
+}
 
 function initPopup() {
   loadProfileAndRender();
@@ -44,12 +71,14 @@ function loadProfileAndRender() {
   ], async (data) => {
     const setupScreen = document.getElementById("setupScreen");
     const dashboardScreen = document.getElementById("dashboardScreen");
+    const settingsScreen = document.getElementById("settingsScreen");
     const authStepContainer = document.getElementById("authStepContainer");
     const profileFormFields = document.getElementById("profileFormFields");
 
     if (data.userEmail && data.partnerEmail && data.userPin) {
-      setupScreen.classList.add("hidden");
-      dashboardScreen.classList.remove("hidden");
+      toggleHidden(setupScreen, true);
+      toggleHidden(settingsScreen, true);
+      toggleHidden(dashboardScreen, false);
 
       const accountDisplay = document.getElementById("accountDisplay");
       const partnerDisplayEmail = document.getElementById("partnerDisplayEmail");
@@ -77,15 +106,16 @@ function loadProfileAndRender() {
         }
       }
     } else {
-      dashboardScreen.classList.add("hidden");
-      setupScreen.classList.remove("hidden");
+      toggleHidden(dashboardScreen, true);
+      toggleHidden(settingsScreen, true);
+      toggleHidden(setupScreen, false);
 
       if (data.userEmail) {
-        if (authStepContainer) authStepContainer.classList.add("hidden");
-        if (profileFormFields) profileFormFields.classList.remove("hidden");
+        toggleHidden(authStepContainer, true);
+        toggleHidden(profileFormFields, false);
       } else {
-        if (authStepContainer) authStepContainer.classList.remove("hidden");
-        if (profileFormFields) profileFormFields.classList.add("hidden");
+        toggleHidden(authStepContainer, false);
+        toggleHidden(profileFormFields, true);
       }
     }
   });
@@ -106,14 +136,14 @@ function setupEventListeners() {
     openSettingsBtn.addEventListener("click", () => {
       chrome.storage.local.get(["userPin"], (data) => {
         if (data.userPin) {
-          if (pinPromptArea) pinPromptArea.classList.remove("hidden");
+          toggleHidden(pinPromptArea, false);
           if (verifyPinInput) {
             verifyPinInput.value = "";
             verifyPinInput.focus();
           }
         } else {
-          dashboardScreen.classList.add("hidden");
-          settingsScreen.classList.remove("hidden");
+          toggleHidden(dashboardScreen, true);
+          toggleHidden(settingsScreen, false);
           renderScheduleStatus();
         }
       });
@@ -126,9 +156,9 @@ function setupEventListeners() {
       const enteredPin = verifyPinInput.value.trim();
       chrome.storage.local.get(["userPin"], (data) => {
         if (enteredPin === data.userPin) {
-          if (pinPromptArea) pinPromptArea.classList.add("hidden");
-          dashboardScreen.classList.add("hidden");
-          settingsScreen.classList.remove("hidden");
+          toggleHidden(pinPromptArea, true);
+          toggleHidden(dashboardScreen, true);
+          toggleHidden(settingsScreen, false);
           renderScheduleStatus();
         } else {
           alert("Incorrect Master PIN. Please try again.");
@@ -141,7 +171,7 @@ function setupEventListeners() {
   // Cancel PIN Prompt
   if (cancelPinBtn) {
     cancelPinBtn.addEventListener("click", () => {
-      if (pinPromptArea) pinPromptArea.classList.add("hidden");
+      toggleHidden(pinPromptArea, true);
       if (verifyPinInput) verifyPinInput.value = "";
     });
   }
@@ -149,9 +179,10 @@ function setupEventListeners() {
   // Return to Dashboard & Re-lock Settings
   if (backToDashboardBtn) {
     backToDashboardBtn.addEventListener("click", () => {
-      settingsScreen.classList.add("hidden");
-      dashboardScreen.classList.remove("hidden");
-      if (pinPromptArea) pinPromptArea.classList.add("hidden");
+      toggleHidden(settingsScreen, true);
+      toggleHidden(dashboardScreen, false);
+      toggleHidden(pinPromptArea, true);
+      loadProfileAndRender();
     });
   }
 
@@ -228,9 +259,12 @@ function setupEventListeners() {
         }, (res) => {
           if (res && res.success) {
             profileStatusText.style.color = "#198754";
-            profileStatusText.textContent = "Profile saved & syncing permissions...";
+            profileStatusText.textContent = "Profile saved successfully!";
             profileStatusText.style.display = "block";
-            loadProfileAndRender();
+
+            setTimeout(() => {
+              profileStatusText.style.display = "none";
+            }, 3500);
           }
         });
       });
@@ -246,13 +280,13 @@ function setupEventListeners() {
   if (forgotPinLink) {
     forgotPinLink.addEventListener("click", (e) => {
       e.preventDefault();
-      forgotPinModal.classList.remove("hidden");
+      toggleHidden(forgotPinModal, false);
     });
   }
 
   if (closeForgotPinBtn) {
     closeForgotPinBtn.addEventListener("click", () => {
-      forgotPinModal.classList.add("hidden");
+      toggleHidden(forgotPinModal, true);
     });
   }
 
@@ -264,7 +298,7 @@ function setupEventListeners() {
       chrome.runtime.sendMessage({ type: "RECOVER_USER_PIN" }, (response) => {
         sendRecoveryEmailBtn.disabled = false;
         sendRecoveryEmailBtn.textContent = "Send Email";
-        forgotPinModal.classList.add("hidden");
+        toggleHidden(forgotPinModal, true);
 
         if (response && response.success) {
           alert("PIN recovery email dispatched to your Google account.");
