@@ -55,14 +55,31 @@ function sanitizeStringForTesting(str) {
 function extractSearchQuery(urlStr) {
   try {
     const url = new URL(urlStr);
-    const domain = url.hostname;
-    if ((domain.includes("google.com") && url.pathname.includes("/search")) ||
-        (domain.includes("bing.com") && url.pathname.includes("/search")) ||
-        (domain.includes("duckduckgo.com") && url.pathname === "/")) {
-      const queryParam = url.searchParams.get("q");
-      if (queryParam) return decodeURIComponent(queryParam.replace(/\+/g, " "));
+    const domain = url.hostname.toLowerCase();
+    
+    // Common search parameter keys used across almost all major search and video platforms
+    const searchKeys = ["q", "query", "search_query", "p", "term", "keyword", "text"];
+    
+    // Check if the URL has a search-related path or if it's a known major engine/YouTube
+    const isSearchPath = url.pathname.includes("/search") || 
+                         url.pathname.includes("/results") || 
+                         url.pathname.includes("/query") ||
+                         domain.includes("youtube.com") ||
+                         domain.includes("google.") ||
+                         domain.includes("bing.com") ||
+                         domain.includes("duckduckgo.com");
+
+    if (isSearchPath) {
+      for (const key of searchKeys) {
+        const val = url.searchParams.get(key);
+        if (val && val.trim() !== "") {
+          return decodeURIComponent(val.replace(/\+/g, " "));
+        }
+      }
     }
-  } catch (e) { console.error("URL Parse error:", e); }
+  } catch (e) { 
+    console.error("URL Parse error:", e); 
+  }
   return null;
 }
 
@@ -293,7 +310,9 @@ async function authenticatedFetch(url, options = {}) {
       try {
         let response = await fetch(url, options);
 
-        if (response.status === 401) {
+        // Treat both 401 (Unauthorized) and 403 (Forbidden) identically for self-healing auth retry
+        if (response.status === 401 || response.status === 403) {
+          console.warn(`⚠️ Auth token rejected with status ${response.status}. Purging cache and retrying silently...`);
           chrome.identity.removeCachedAuthToken({ token }, () => {
             fetchNewToken(false, async (newToken) => {
               options.headers["Authorization"] = `Bearer ${newToken}`;
@@ -303,7 +322,7 @@ async function authenticatedFetch(url, options = {}) {
                 return resolve(retryResponse);
               }
               notifyActiveTabOfAuthFailure();
-              reject("Unauthorized after silent retry");
+              reject(`API request failed with status ${retryResponse.status} after silent retry`);
             }, (err) => {
               notifyActiveTabOfAuthFailure();
               reject(err);
@@ -839,17 +858,18 @@ function syncLogsToDriveFile(fileId, newLogs) {
           const randomJitter = Math.floor(Math.random() * 500) + 200;
           setTimeout(() => syncLogsToDriveFile(fileId, newLogs), randomJitter);
         } else if (uploadRes.ok) {
+          // Local buffer is ONLY cleared upon absolute upload success (200 OK)
           chrome.storage.local.set({ logBuffer: [] });
         } else {
           const errorBody = await uploadRes.text();
-          console.warn(`Upload HTTP Error ${uploadRes.status}:`, errorBody);
+          console.warn(`Upload HTTP Error ${uploadRes.status}: Local buffer preserved for retry.`, errorBody);
         }
       })
-      .catch(err => console.warn("Upload network warning (will retry on next alarm):", err));
+      .catch(err => console.warn("Upload network warning: Local buffer preserved for retry.", err));
     });
   })
   .catch(err => {
-    console.warn("Sync fetch error:", err);
+    console.warn("Sync fetch error: Local buffer preserved for retry.", err);
   });
 }
 
