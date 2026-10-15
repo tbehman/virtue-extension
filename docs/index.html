@@ -724,9 +724,11 @@
 
       let domainCounts = {};
       let activeDaysSet = new Set();
+      
+      // Clean single-pass deduplication for consecutive identical search queries within 2 minutes
       globalSearches = [];
-
       const dailyCounts = {};
+
       for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
@@ -742,8 +744,24 @@
           if (dailyCounts[dateStrKey] !== undefined) dailyCounts[dateStrKey]++;
         }
 
+        // Search Query Extraction & Time-Window Deduplication
         if (log.q && log.q.trim() !== "" && log.q.trim().toUpperCase() !== "N/A") {
-          globalSearches.push(log);
+          const currentQuery = log.q.trim().toLowerCase();
+          const currentTime = logMs || 0;
+          const lastSearch = globalSearches[globalSearches.length - 1];
+
+          let isDuplicate = false;
+          if (lastSearch) {
+            const lastQuery = lastSearch.q.trim().toLowerCase();
+            const lastTime = (lastSearch.t || lastSearch.timestamp) || 0;
+            if (currentQuery === lastQuery && Math.abs(currentTime - lastTime) < 120000) {
+              isDuplicate = true;
+            }
+          }
+
+          if (!isDuplicate) {
+            globalSearches.push(log);
+          }
         }
 
         try {
