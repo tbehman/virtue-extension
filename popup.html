@@ -84,10 +84,7 @@
 
     <div class="card">
       <div style="margin-bottom: 10px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span class="info-label">CONNECTED ACCOUNT</span>
-          <button id="refreshAccountBtn" title="Refresh Account" style="background: none; border: none; cursor: pointer; font-size: 11px; opacity: 0.6;">🔄</button>
-        </div>
+        <span class="info-label">CONNECTED ACCOUNT</span>
         <div id="accountDisplay" class="info-value">Loading...</div>
       </div>
       <div>
@@ -116,7 +113,8 @@
       ← Back to Dashboard
     </button>
 
-    <div class="card">
+    <!-- PROFILE SETTINGS AT THE TOP -->
+    <div class="card" style="margin-bottom: 10px;">
       <div class="info-label" style="font-size: 11px; margin-bottom: 8px;">PROFILE SETTINGS</div>
       
       <label class="info-label" for="editUserNameInput">YOUR NAME</label>
@@ -138,6 +136,34 @@
       <p id="profileStatusText" style="font-size: 11px; text-align: center; margin-top: 4px; display: none;"></p>
     </div>
 
+    <!-- WEEKLY ACCOUNTABILITY REPORT STATUS CARD -->
+    <div class="card" style="margin-bottom: 10px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <div class="info-label" style="font-size: 11px; margin-bottom: 0;">WEEKLY ACCOUNTABILITY REPORT</div>
+        <span style="font-size: 10px; font-weight: 700; color: #198754; background: #e8f5e9; padding: 2px 6px; border-radius: 4px;">● ON SCHEDULE</span>
+      </div>
+      <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px; line-height: 1.35;">
+        Sent automatically every Monday at 9:00 AM local time.
+      </p>
+
+      <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+        <div style="flex: 1; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Last Sent</div>
+          <div id="lastSentDisplay" style="font-size: 11px; font-weight: 700; color: var(--text-main); margin-top: 2px;">Never</div>
+        </div>
+        <div style="flex: 1; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Next Scheduled</div>
+          <div id="nextDueDisplay" style="font-size: 11px; font-weight: 700; color: var(--text-main); margin-top: 2px;">Mon, 9:00 AM</div>
+        </div>
+      </div>
+
+      <button id="btnSendTestReport" class="btn btn-outline" style="font-size: 11px; padding: 6px; width: 100%; background: #ffffff;">
+        Send Test Report Now
+      </button>
+      <p id="testReportFeedback" style="font-size: 11px; text-align: center; margin-top: 6px; margin-bottom: 0; display: none;"></p>
+    </div>
+
+    <!-- DOMAIN MANAGEMENT -->
     <div class="card">
       <div id="domainSectionTitle" class="info-label" style="font-size: 11px; margin-bottom: 2px;">🚫 CUSTOM BLOCKLIST</div>
       <p id="domainSectionSubtext" style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
@@ -156,16 +182,6 @@
         </div>
         <ul id="domainView" class="domain-list"></ul>
       </div>
-    </div>
-
-    <div class="card" id="managementRow">
-      <div class="info-label" style="font-size: 11px; margin-bottom: 4px;">YOUR SAVED REPORT</div>
-      <p style="font-size: 11px; color: var(--text-muted); line-height: 1.4; margin-bottom: 10px;">
-        To keep Virtue free and completely private, your activity report is saved inside a private folder on your Google Drive.
-      </p>
-
-      <label class="info-label" style="font-size: 10px;">📁 CONNECTED GOOGLE ACCOUNT</label>
-      <div id="settingsUserEmail" class="info-value" style="font-weight: bold;">Loading...</div>
     </div>
   </div>
 

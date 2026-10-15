@@ -1,352 +1,381 @@
 import { deriveKeyFromPin } from './cryptoUtils.js';
 
-document.addEventListener("DOMContentLoaded", async () => {
-  const setupScreen = document.getElementById("setupScreen");
-  const dashboardScreen = document.getElementById("dashboardScreen");
-  const settingsScreen = document.getElementById("settingsScreen");
+document.addEventListener("DOMContentLoaded", () => {
+  initPopup();
+});
 
-  const authStepContainer = document.getElementById("authStepContainer");
-  const authGoogleBtn = document.getElementById("authGoogleBtn");
-  const profileFormFields = document.getElementById("profileFormFields");
+function initPopup() {
+  loadProfileAndRender();
+  setupEventListeners();
+  renderScheduleStatus();
+  loadDomainRules();
+}
 
-  const userNameInput = document.getElementById("userNameInput");
-  const partnerNameInput = document.getElementById("partnerNameInput");
-  const partnerEmailInput = document.getElementById("partnerEmailInput");
-  const masterPinInput = document.getElementById("masterPinInput");
-  const completeSetupBtn = document.getElementById("completeSetupBtn");
-  const openExtensionSettingsBtn = document.getElementById("openExtensionSettingsBtn");
+function renderScheduleStatus() {
+  chrome.storage.local.get(["lastWeeklyReportSentAt", "nextWeeklyReportDueAt"], (data) => {
+    const lastSentEl = document.getElementById("lastSentDisplay");
+    const nextDueEl = document.getElementById("nextDueDisplay");
 
-  const accountDisplay = document.getElementById("accountDisplay");
-  const partnerDisplayEmail = document.getElementById("partnerDisplayEmail");
-  const viewSheetLink = document.getElementById("viewSheetLink");
+    if (lastSentEl) {
+      if (data.lastWeeklyReportSentAt) {
+        lastSentEl.textContent = new Date(data.lastWeeklyReportSentAt).toLocaleString([], {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+      } else {
+        lastSentEl.textContent = "Never";
+      }
+    }
+
+    if (nextDueEl) {
+      if (data.nextWeeklyReportDueAt) {
+        nextDueEl.textContent = new Date(data.nextWeeklyReportDueAt).toLocaleString([], {
+          weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+      } else {
+        nextDueEl.textContent = "Mon, 9:00 AM";
+      }
+    }
+  });
+}
+
+function loadProfileAndRender() {
+  chrome.storage.local.get([
+    "userEmail", "userName", "partnerName", "partnerEmail", "userPin", "driveFileId"
+  ], async (data) => {
+    const setupScreen = document.getElementById("setupScreen");
+    const dashboardScreen = document.getElementById("dashboardScreen");
+    const authStepContainer = document.getElementById("authStepContainer");
+    const profileFormFields = document.getElementById("profileFormFields");
+
+    if (data.userEmail && data.partnerEmail && data.userPin) {
+      setupScreen.classList.add("hidden");
+      dashboardScreen.classList.remove("hidden");
+
+      const accountDisplay = document.getElementById("accountDisplay");
+      const partnerDisplayEmail = document.getElementById("partnerDisplayEmail");
+
+      if (accountDisplay) accountDisplay.textContent = data.userEmail || "Connected";
+      if (partnerDisplayEmail) partnerDisplayEmail.textContent = data.partnerEmail || "None";
+
+      const editUserNameInput = document.getElementById("editUserNameInput");
+      const editPartnerNameInput = document.getElementById("editPartnerNameInput");
+      const editPartnerEmailInput = document.getElementById("editPartnerEmailInput");
+
+      if (editUserNameInput) editUserNameInput.value = data.userName || "";
+      if (editPartnerNameInput) editPartnerNameInput.value = data.partnerName || "";
+      if (editPartnerEmailInput) editPartnerEmailInput.value = data.partnerEmail || "";
+
+      if (data.driveFileId) {
+        const viewSheetLink = document.getElementById("viewSheetLink");
+        if (viewSheetLink) {
+          try {
+            const { keyHex } = await deriveKeyFromPin(data.userPin, data.userEmail);
+            viewSheetLink.href = `https://tbehman.github.io/virtue-extension/?fileId=${data.driveFileId}#key=${keyHex}`;
+          } catch (e) {
+            viewSheetLink.href = `https://tbehman.github.io/virtue-extension/?fileId=${data.driveFileId}`;
+          }
+        }
+      }
+    } else {
+      dashboardScreen.classList.add("hidden");
+      setupScreen.classList.remove("hidden");
+
+      if (data.userEmail) {
+        if (authStepContainer) authStepContainer.classList.add("hidden");
+        if (profileFormFields) profileFormFields.classList.remove("hidden");
+      } else {
+        if (authStepContainer) authStepContainer.classList.remove("hidden");
+        if (profileFormFields) profileFormFields.classList.add("hidden");
+      }
+    }
+  });
+}
+
+function setupEventListeners() {
   const openSettingsBtn = document.getElementById("openSettingsBtn");
-
+  const backToDashboardBtn = document.getElementById("backToDashboardBtn");
+  const settingsScreen = document.getElementById("settingsScreen");
+  const dashboardScreen = document.getElementById("dashboardScreen");
   const pinPromptArea = document.getElementById("pinPromptArea");
-  const verifyPinInput = document.getElementById("verifyPinInput");
   const submitPinBtn = document.getElementById("submitPinBtn");
   const cancelPinBtn = document.getElementById("cancelPinBtn");
-  const forgotPinLink = document.getElementById("forgotPinLink");
+  const verifyPinInput = document.getElementById("verifyPinInput");
 
-  const backToDashboardBtn = document.getElementById("backToDashboardBtn");
-  const editUserNameInput = document.getElementById("editUserNameInput");
-  const editPartnerNameInput = document.getElementById("editPartnerNameInput");
-  const editPartnerEmailInput = document.getElementById("editPartnerEmailInput");
+  // Open Settings Trigger -> Show PIN Guard First
+  if (openSettingsBtn) {
+    openSettingsBtn.addEventListener("click", () => {
+      chrome.storage.local.get(["userPin"], (data) => {
+        if (data.userPin) {
+          if (pinPromptArea) pinPromptArea.classList.remove("hidden");
+          if (verifyPinInput) {
+            verifyPinInput.value = "";
+            verifyPinInput.focus();
+          }
+        } else {
+          dashboardScreen.classList.add("hidden");
+          settingsScreen.classList.remove("hidden");
+          renderScheduleStatus();
+        }
+      });
+    });
+  }
+
+  // Submit PIN to Unlock Settings
+  if (submitPinBtn) {
+    submitPinBtn.addEventListener("click", () => {
+      const enteredPin = verifyPinInput.value.trim();
+      chrome.storage.local.get(["userPin"], (data) => {
+        if (enteredPin === data.userPin) {
+          if (pinPromptArea) pinPromptArea.classList.add("hidden");
+          dashboardScreen.classList.add("hidden");
+          settingsScreen.classList.remove("hidden");
+          renderScheduleStatus();
+        } else {
+          alert("Incorrect Master PIN. Please try again.");
+          if (verifyPinInput) verifyPinInput.value = "";
+        }
+      });
+    });
+  }
+
+  // Cancel PIN Prompt
+  if (cancelPinBtn) {
+    cancelPinBtn.addEventListener("click", () => {
+      if (pinPromptArea) pinPromptArea.classList.add("hidden");
+      if (verifyPinInput) verifyPinInput.value = "";
+    });
+  }
+
+  // Return to Dashboard & Re-lock Settings
+  if (backToDashboardBtn) {
+    backToDashboardBtn.addEventListener("click", () => {
+      settingsScreen.classList.add("hidden");
+      dashboardScreen.classList.remove("hidden");
+      if (pinPromptArea) pinPromptArea.classList.add("hidden");
+    });
+  }
+
+  // Open Chrome Extension Settings for Incognito
+  const openExtensionSettingsBtn = document.getElementById("openExtensionSettingsBtn");
+  if (openExtensionSettingsBtn) {
+    openExtensionSettingsBtn.addEventListener("click", () => {
+      chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+    });
+  }
+
+  // Manual "Send Test Report Now"
+  const btnSendTest = document.getElementById("btnSendTestReport");
+  const feedbackEl = document.getElementById("testReportFeedback");
+
+  if (btnSendTest) {
+    btnSendTest.addEventListener("click", () => {
+      btnSendTest.disabled = true;
+      btnSendTest.textContent = "Sending Snapshot...";
+      if (feedbackEl) feedbackEl.style.display = "none";
+
+      chrome.runtime.sendMessage({ type: "SEND_TEST_REPORT" }, (response) => {
+        btnSendTest.disabled = false;
+        btnSendTest.textContent = "Send Test Report Now";
+
+        if (response && response.success) {
+          if (feedbackEl) {
+            feedbackEl.style.color = "#198754";
+            feedbackEl.style.fontWeight = "bold";
+            feedbackEl.textContent = "✅ Test report sent to partner!";
+            feedbackEl.style.display = "block";
+          }
+          renderScheduleStatus();
+        } else {
+          if (feedbackEl) {
+            feedbackEl.style.color = "#dc3545";
+            feedbackEl.style.fontWeight = "bold";
+            feedbackEl.textContent = "❌ Failed to send. Check partner email.";
+            feedbackEl.style.display = "block";
+          }
+        }
+      });
+    });
+  }
+
+  // Profile Save
   const saveProfileBtn = document.getElementById("saveProfileBtn");
   const profileStatusText = document.getElementById("profileStatusText");
 
-  const modeBlocklistBtn = document.getElementById("modeBlocklistBtn");
-  const modeWhitelistBtn = document.getElementById("modeWhitelistBtn");
-  const domainInput = document.getElementById("domainInput");
-  const addDomainBtn = document.getElementById("addDomainBtn");
-  const domainView = document.getElementById("domainView");
-  const domainSectionTitle = document.getElementById("domainSectionTitle");
-  const domainSectionSubtext = document.getElementById("domainSectionSubtext");
+  if (saveProfileBtn) {
+    saveProfileBtn.addEventListener("click", () => {
+      const newUserName = document.getElementById("editUserNameInput").value.trim();
+      const newPartnerName = document.getElementById("editPartnerNameInput").value.trim();
+      const newPartnerEmail = document.getElementById("editPartnerEmailInput").value.trim().toLowerCase();
 
-  const settingsUserEmail = document.getElementById("settingsUserEmail");
-  const forgotPinModal = document.getElementById("forgotPinModal");
-  const sendRecoveryEmailBtn = document.getElementById("sendRecoveryEmailBtn");
-  const closeForgotPinBtn = document.getElementById("closeForgotPinBtn");
-
-  let localState = {};
-
-  async function initPopup() {
-    chrome.storage.local.get([
-      "userEmail", "userName", "partnerName", "partnerEmail", "userPin",
-      "driveFileId", "filterMode", "customBlacklist", "customWhitelist", "syncStatus"
-    ], async (res) => {
-      localState = res || {};
-
-      if (!localState.userEmail) {
-        showScreen("setup");
-        authStepContainer.classList.remove("hidden");
-        profileFormFields.classList.add("hidden");
-      } else if (!localState.userName || !localState.partnerEmail || !localState.userPin) {
-        showScreen("setup");
-        authStepContainer.classList.add("hidden");
-        profileFormFields.classList.remove("hidden");
-      } else {
-        showScreen("dashboard");
-        renderDashboardView();
-
-        // Check for rollback alert
-        if (localState.syncStatus === "ERROR_INVALID_EMAIL") {
-          alert("⚠️ The partner email you entered was invalid and could not be granted access on Google Drive. Profile reverted to previous partner.");
-          chrome.storage.local.set({ syncStatus: "SYNCED" });
-        }
-      }
-    });
-  }
-
-  function showScreen(screenName) {
-    setupScreen.classList.add("hidden");
-    dashboardScreen.classList.add("hidden");
-    settingsScreen.classList.add("hidden");
-
-    if (screenName === "setup") setupScreen.classList.remove("hidden");
-    if (screenName === "dashboard") dashboardScreen.classList.remove("hidden");
-    if (screenName === "settings") settingsScreen.classList.remove("hidden");
-  }
-
-  async function renderDashboardView() {
-    accountDisplay.textContent = localState.userEmail || "Connected";
-    partnerDisplayEmail.textContent = localState.partnerEmail || "None Assigned";
-
-    const pin = localState.userPin || "1234";
-    const email = localState.userEmail || "user@virtue.app";
-
-    try {
-      const { keyHex } = await deriveKeyFromPin(pin, email);
-      const fileId = localState.driveFileId || "";
-      viewSheetLink.href = `https://tbehman.github.io/virtue-extension/?fileId=${fileId}#key=${keyHex}`;
-    } catch (e) {
-      console.error("Error generating dashboard encryption key:", e);
-    }
-  }
-
-  viewSheetLink.addEventListener("click", async (e) => {
-    e.preventDefault();
-    const pin = localState.userPin || "1234";
-    const email = localState.userEmail || "user@virtue.app";
-    const fileId = localState.driveFileId || "";
-
-    try {
-      const { keyHex } = await deriveKeyFromPin(pin, email);
-      const targetUrl = `https://tbehman.github.io/virtue-extension/?fileId=${fileId}#key=${keyHex}`;
-      chrome.tabs.create({ url: targetUrl });
-    } catch (err) {
-      console.error("Dashboard link error:", err);
-    }
-  });
-
-  authGoogleBtn.addEventListener("click", () => {
-    chrome.identity.getAuthToken({ interactive: true }, (token) => {
-      if (chrome.runtime.lastError || !token) {
-        alert("Google Authentication failed: " + (chrome.runtime.lastError?.message || "Unknown error"));
+      if (!newPartnerEmail || !newPartnerEmail.includes("@")) {
+        profileStatusText.style.color = "#dc3545";
+        profileStatusText.textContent = "Please enter a valid partner email address.";
+        profileStatusText.style.display = "block";
         return;
       }
 
-      fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      .then(res => res.json())
-      .then(profile => {
-        const userEmail = (profile.email || "").trim().toLowerCase();
-        chrome.storage.local.set({ userEmail, authToken: token }, () => {
-          localState.userEmail = userEmail;
-          authStepContainer.classList.add("hidden");
-          profileFormFields.classList.remove("hidden");
+      chrome.storage.local.get(["partnerEmail"], (data) => {
+        const oldPartnerEmail = data.partnerEmail || "";
+
+        chrome.runtime.sendMessage({
+          type: "UPDATE_PROFILE",
+          profileData: {
+            userName: newUserName,
+            partnerName: newPartnerName,
+            partnerEmail: newPartnerEmail
+          },
+          oldPartnerEmail: oldPartnerEmail
+        }, (res) => {
+          if (res && res.success) {
+            profileStatusText.style.color = "#198754";
+            profileStatusText.textContent = "Profile saved & syncing permissions...";
+            profileStatusText.style.display = "block";
+            loadProfileAndRender();
+          }
         });
-      })
-      .catch((err) => {
-        console.error("Auth Error:", err);
-        alert("Could not retrieve Google profile details. Please try again.");
       });
     });
-  });
-
-  openExtensionSettingsBtn.addEventListener("click", () => {
-    chrome.tabs.create({ url: "chrome://extensions/?id=" + chrome.runtime.id });
-  });
-
-  completeSetupBtn.addEventListener("click", () => {
-    const userName = userNameInput.value.trim();
-    const partnerName = partnerNameInput.value.trim();
-    const partnerEmail = partnerEmailInput.value.trim().toLowerCase();
-    const userPin = masterPinInput.value.trim();
-
-    if (!userName || !partnerName || !partnerEmail || userPin.length !== 4) {
-      alert("Please fill in all fields and provide a 4-digit PIN.");
-      return;
-    }
-
-    const updates = {
-      userName,
-      partnerName,
-      partnerEmail,
-      userPin,
-      settingsLastUpdated: Date.now()
-    };
-
-    chrome.storage.local.set(updates, () => {
-      Object.assign(localState, updates);
-      showScreen("dashboard");
-      renderDashboardView();
-
-      chrome.runtime.sendMessage({
-        action: "updateProfile",
-        profileData: updates,
-        oldPartnerEmail: ""
-      });
-      chrome.runtime.sendMessage({ type: "TRIGGER_INTERACTIVE_AUTH" });
-    });
-  });
-
-  openSettingsBtn.addEventListener("click", () => {
-    pinPromptArea.classList.remove("hidden");
-    verifyPinInput.value = "";
-    verifyPinInput.focus();
-  });
-
-  cancelPinBtn.addEventListener("click", () => {
-    pinPromptArea.classList.add("hidden");
-  });
-
-  submitPinBtn.addEventListener("click", unlockSettings);
-  verifyPinInput.addEventListener("keyup", (e) => {
-    if (e.key === "Enter") unlockSettings();
-  });
-
-  function unlockSettings() {
-    const enteredPin = verifyPinInput.value.trim();
-    if (enteredPin === localState.userPin) {
-      pinPromptArea.classList.add("hidden");
-      loadSettingsScreen();
-      showScreen("settings");
-    } else {
-      alert("Incorrect Security PIN.");
-      verifyPinInput.value = "";
-    }
   }
 
-  forgotPinLink.addEventListener("click", (e) => {
-    e.preventDefault();
-    forgotPinModal.classList.remove("hidden");
-  });
+  // Forgot PIN Modal Handlers
+  const forgotPinLink = document.getElementById("forgotPinLink");
+  const forgotPinModal = document.getElementById("forgotPinModal");
+  const closeForgotPinBtn = document.getElementById("closeForgotPinBtn");
+  const sendRecoveryEmailBtn = document.getElementById("sendRecoveryEmailBtn");
 
-  closeForgotPinBtn.addEventListener("click", () => {
-    forgotPinModal.classList.add("hidden");
-  });
+  if (forgotPinLink) {
+    forgotPinLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      forgotPinModal.classList.remove("hidden");
+    });
+  }
 
-  sendRecoveryEmailBtn.addEventListener("click", () => {
-    sendRecoveryEmailBtn.disabled = true;
-    sendRecoveryEmailBtn.textContent = "Sending...";
-
-    chrome.runtime.sendMessage({ type: "RECOVER_USER_PIN" }, (response) => {
-      sendRecoveryEmailBtn.disabled = false;
-      sendRecoveryEmailBtn.textContent = "Send Email";
+  if (closeForgotPinBtn) {
+    closeForgotPinBtn.addEventListener("click", () => {
       forgotPinModal.classList.add("hidden");
-
-      if (response && response.success) {
-        alert("Recovery email dispatched to " + localState.userEmail);
-      } else {
-        alert("Failed to send recovery email. Ensure Google account is connected.");
-      }
     });
-  });
-
-  function loadSettingsScreen() {
-    editUserNameInput.value = localState.userName || "";
-    editPartnerNameInput.value = localState.partnerName || "";
-    editPartnerEmailInput.value = localState.partnerEmail || "";
-    settingsUserEmail.textContent = localState.userEmail || "Not Connected";
-
-    renderDomainList();
   }
 
-  backToDashboardBtn.addEventListener("click", () => {
-    showScreen("dashboard");
-    renderDashboardView();
-  });
+  if (sendRecoveryEmailBtn) {
+    sendRecoveryEmailBtn.addEventListener("click", () => {
+      sendRecoveryEmailBtn.disabled = true;
+      sendRecoveryEmailBtn.textContent = "Sending...";
 
-  saveProfileBtn.addEventListener("click", () => {
-    const newUserName = editUserNameInput.value.trim();
-    const newPartnerName = editPartnerNameInput.value.trim();
-    const newPartnerEmail = editPartnerEmailInput.value.trim().toLowerCase();
-    const oldPartnerEmail = (localState.partnerEmail || "").trim().toLowerCase();
+      chrome.runtime.sendMessage({ type: "RECOVER_USER_PIN" }, (response) => {
+        sendRecoveryEmailBtn.disabled = false;
+        sendRecoveryEmailBtn.textContent = "Send Email";
+        forgotPinModal.classList.add("hidden");
 
-    if (!newUserName || !newPartnerName || !newPartnerEmail) {
-      alert("Profile fields cannot be empty.");
-      return;
-    }
-
-    const updates = {
-      userName: newUserName,
-      partnerName: newPartnerName,
-      partnerEmail: newPartnerEmail,
-      settingsLastUpdated: Date.now()
-    };
-
-    // 1. Immediately dispatch fire-and-forget message to Service Worker
-    chrome.runtime.sendMessage({
-      action: "updateProfile",
-      profileData: updates,
-      oldPartnerEmail: oldPartnerEmail
-    });
-
-    // 2. Persist locally and update UI state
-    chrome.storage.local.set(updates, () => {
-      Object.assign(localState, updates);
-
-      profileStatusText.style.display = "block";
-      profileStatusText.textContent = "✓ Profile saved & syncing permissions...";
-      setTimeout(() => { profileStatusText.style.display = "none"; }, 3000);
-    });
-  });
-
-  modeBlocklistBtn.addEventListener("click", () => setFilterMode("blocklist"));
-  modeWhitelistBtn.addEventListener("click", () => setFilterMode("whitelist"));
-
-  function setFilterMode(mode) {
-    localState.filterMode = mode;
-    chrome.storage.local.set({ filterMode: mode, settingsLastUpdated: Date.now() });
-
-    if (mode === "blocklist") {
-      modeBlocklistBtn.classList.add("active");
-      modeWhitelistBtn.classList.remove("active");
-      domainSectionTitle.textContent = "🚫 CUSTOM BLOCKLIST";
-      domainSectionSubtext.textContent = "Explicitly listed domains will be intercepted.";
-    } else {
-      modeWhitelistBtn.classList.add("active");
-      modeBlocklistBtn.classList.remove("active");
-      domainSectionTitle.textContent = "✅ CUSTOM WHITELIST";
-      domainSectionSubtext.textContent = "ONLY explicitly listed domains will be allowed.";
-    }
-
-    renderDomainList();
-  }
-
-  addDomainBtn.addEventListener("click", () => {
-    const domain = domainInput.value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '');
-    if (!domain) return;
-
-    const listKey = localState.filterMode === "whitelist" ? "customWhitelist" : "customBlacklist";
-    const currentList = localState[listKey] || [];
-
-    if (!currentList.includes(domain)) {
-      currentList.push(domain);
-      localState[listKey] = currentList;
-
-      chrome.storage.local.set({ [listKey]: currentList, settingsLastUpdated: Date.now() }, () => {
-        domainInput.value = "";
-        renderDomainList();
+        if (response && response.success) {
+          alert("PIN recovery email dispatched to your Google account.");
+        } else {
+          alert("Failed to send PIN recovery email. Please check internet connection.");
+        }
       });
-    }
+    });
+  }
+}
+
+function loadDomainRules() {
+  const modeBlocklistBtn = document.getElementById("modeBlocklistBtn");
+  const modeWhitelistBtn = document.getElementById("modeWhitelistBtn");
+  const addDomainBtn = document.getElementById("addDomainBtn");
+  const domainInput = document.getElementById("domainInput");
+
+  if (!modeBlocklistBtn || !modeWhitelistBtn) return;
+
+  chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist"], (data) => {
+    const filterMode = data.filterMode || "blocklist";
+    updateModeUI(filterMode);
+    renderDomainList(filterMode === "blocklist" ? (data.customBlacklist || []) : (data.customWhitelist || []));
   });
 
-  function renderDomainList() {
-    const mode = localState.filterMode || "blocklist";
-    const listKey = mode === "whitelist" ? "customWhitelist" : "customBlacklist";
-    const domains = localState[listKey] || [];
+  modeBlocklistBtn.addEventListener("click", () => {
+    chrome.storage.local.set({ filterMode: "blocklist" }, () => {
+      updateModeUI("blocklist");
+      chrome.storage.local.get(["customBlacklist"], (res) => renderDomainList(res.customBlacklist || []));
+    });
+  });
 
-    domainView.innerHTML = domains.map((domain, index) => `
-      <li style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px;">
-        <span>${domain}</span>
-        <button data-index="${index}" class="remove-domain-btn" style="background: none; border: none; color: var(--danger); cursor: pointer; font-weight: bold;">✕</button>
-      </li>
-    `).join('');
+  modeWhitelistBtn.addEventListener("click", () => {
+    chrome.storage.local.set({ filterMode: "whitelist" }, () => {
+      updateModeUI("whitelist");
+      chrome.storage.local.get(["customWhitelist"], (res) => renderDomainList(res.customWhitelist || []));
+    });
+  });
 
-    document.querySelectorAll(".remove-domain-btn").forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        const idx = parseInt(e.target.getAttribute("data-index"), 10);
-        domains.splice(idx, 1);
-        localState[listKey] = domains;
+  if (addDomainBtn) {
+    addDomainBtn.addEventListener("click", () => {
+      const val = domainInput.value.trim().toLowerCase();
+      if (!val) return;
 
-        chrome.storage.local.set({ [listKey]: domains, settingsLastUpdated: Date.now() }, () => {
-          renderDomainList();
+      chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist"], (data) => {
+        const mode = data.filterMode || "blocklist";
+        const key = mode === "blocklist" ? "customBlacklist" : "customWhitelist";
+        const list = data[key] || [];
+
+        if (!list.includes(val)) {
+          list.push(val);
+          chrome.storage.local.set({ [key]: list, settingsLastUpdated: Date.now() }, () => {
+            domainInput.value = "";
+            renderDomainList(list);
+          });
+        }
+      });
+    });
+  }
+}
+
+function updateModeUI(mode) {
+  const modeBlocklistBtn = document.getElementById("modeBlocklistBtn");
+  const modeWhitelistBtn = document.getElementById("modeWhitelistBtn");
+  const title = document.getElementById("domainSectionTitle");
+  const subtext = document.getElementById("domainSectionSubtext");
+
+  if (mode === "blocklist") {
+    modeBlocklistBtn.classList.add("active");
+    modeWhitelistBtn.classList.remove("active");
+    if (title) title.textContent = "🚫 CUSTOM BLOCKLIST";
+    if (subtext) subtext.textContent = "Explicitly listed domains will be intercepted.";
+  } else {
+    modeWhitelistBtn.classList.add("active");
+    modeBlocklistBtn.classList.remove("active");
+    if (title) title.textContent = "✅ CUSTOM WHITELIST";
+    if (subtext) subtext.textContent = "Only explicitly listed domains will be accessible.";
+  }
+}
+
+function renderDomainList(list) {
+  const domainView = document.getElementById("domainView");
+  if (!domainView) return;
+
+  domainView.innerHTML = "";
+  if (list.length === 0) {
+    domainView.innerHTML = `<li style="font-size: 11px; color: var(--text-muted); padding: 4px 0;">No custom rules added.</li>`;
+    return;
+  }
+
+  list.forEach((domain, idx) => {
+    const li = document.createElement("li");
+    li.style.cssText = "display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 11px; border-bottom: 1px solid #e9ecef;";
+    li.innerHTML = `
+      <span>${domain}</span>
+      <button data-idx="${idx}" style="background: none; border: none; color: #dc3545; cursor: pointer; font-weight: bold;">✕</button>
+    `;
+
+    li.querySelector("button").addEventListener("click", () => {
+      chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist"], (data) => {
+        const mode = data.filterMode || "blocklist";
+        const key = mode === "blocklist" ? "customBlacklist" : "customWhitelist";
+        const currentList = data[key] || [];
+
+        currentList.splice(idx, 1);
+        chrome.storage.local.set({ [key]: currentList, settingsLastUpdated: Date.now() }, () => {
+          renderDomainList(currentList);
         });
       });
     });
-  }
 
-  initPopup();
-});
+    domainView.appendChild(li);
+  });
+}

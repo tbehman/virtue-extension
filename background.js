@@ -66,6 +66,23 @@ function extractSearchQuery(urlStr) {
   return null;
 }
 
+function getNextMonday9AM() {
+  const now = new Date();
+  const nextMonday = new Date(now);
+
+  const currentDay = now.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+  let daysUntilMonday = (1 - currentDay + 7) % 7;
+
+  if (daysUntilMonday === 0 && now.getHours() >= 9) {
+    daysUntilMonday = 7;
+  }
+
+  nextMonday.setDate(now.getDate() + daysUntilMonday);
+  nextMonday.setHours(9, 0, 0, 0);
+
+  return nextMonday.getTime();
+}
+
 /**
  * Idempotent, Multi-Device Safe Permission Sync Engine
  * Atomic Order of Operations: Grant (Silently) -> Welcome Email -> Handoff Email -> Revoke Stale
@@ -364,9 +381,9 @@ function setupAlarms() {
     }
   });
 
-  chrome.alarms.get("checkWeeklyDigest", (alarm) => {
+  chrome.alarms.get("checkWeeklyReport", (alarm) => {
     if (!alarm || (alarm.scheduledTime && alarm.scheduledTime < Date.now())) {
-      chrome.alarms.create("checkWeeklyDigest", { periodInMinutes: 1440 });
+      chrome.alarms.create("checkWeeklyReport", { periodInMinutes: 60 });
     }
   });
 }
@@ -374,12 +391,13 @@ function setupAlarms() {
 chrome.runtime.onInstalled.addListener(() => {
   setupAlarms();
 
-  chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist", "userPin"], (result) => {
+  chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist", "userPin", "nextWeeklyReportDueAt"], (result) => {
     const updates = {};
     if (!result.filterMode) updates.filterMode = "blocklist";
     if (!result.customBlacklist) updates.customBlacklist = ["facebook.com", "instagram.com"];
     if (!result.customWhitelist) updates.customWhitelist = ["wikipedia.org", "google.com"];
     if (!result.userPin) updates.userPin = "1234";
+    if (!result.nextWeeklyReportDueAt) updates.nextWeeklyReportDueAt = getNextMonday9AM();
 
     if (Object.keys(updates).length > 0) {
       chrome.storage.local.set(updates, () => { updateDynamicSafeSearchRules(); });
@@ -393,6 +411,7 @@ chrome.runtime.onStartup.addListener(() => {
   setupAlarms();
   updateDynamicSafeSearchRules();
   reconcilePartnerPermissions();
+  checkAndSendWeeklyReport();
 });
 
 setupAlarms();
@@ -439,23 +458,33 @@ function addToBuffer(data) {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "flushBuffer") {
     flushBufferToDriveJson();
-  } else if (alarm.name === "checkWeeklyDigest") {
-    checkAndSendWeeklyDigest();
+  } else if (alarm.name === "checkWeeklyReport") {
+    checkAndSendWeeklyReport();
   }
 });
 
-async function checkAndSendWeeklyDigest() {
+async function checkAndSendWeeklyReport() {
   chrome.storage.local.get([
-    "userName", "partnerName", "partnerEmail", "driveFileId", "lastWeeklyDigestSentAt"
+    "userName", "partnerName", "partnerEmail", "driveFileId", 
+    "lastWeeklyReportSentAt", "nextWeeklyReportDueAt"
   ], async (data) => {
     if (!data.partnerEmail || !data.driveFileId) return;
 
     const now = Date.now();
-    const lastSent = data.lastWeeklyDigestSentAt || 0;
-    if (now - lastSent < SEVEN_DAYS_MS) return;
+    const nextDue = data.nextWeeklyReportDueAt || getNextMonday9AM();
 
-    await dispatchReportSnapshot(data, { isHandoff: false });
-    chrome.storage.local.set({ lastWeeklyDigestSentAt: now });
+    if (now >= nextDue) {
+      console.log("⏰ Scheduled target reached. Dispatching Weekly Accountability Report...");
+      
+      const success = await dispatchReportSnapshot(data, { isHandoff: false });
+      if (success) {
+        const newNextDue = getNextMonday9AM();
+        await chrome.storage.local.set({
+          lastWeeklyReportSentAt: now,
+          nextWeeklyReportDueAt: newNextDue
+        });
+      }
+    }
   });
 }
 
@@ -513,10 +542,10 @@ async function dispatchReportSnapshot(profileData, options = {}) {
     const partnerName = profileData.partnerName || "Partner";
     const dashboardUrl = `https://tbehman.github.io/virtue-extension/?fileId=${profileData.driveFileId}#key=${keyHex}`;
 
-    let subject = `✅ Virtue Report for ${userName}: All Clear`;
-    if (ignoredWarnings.length > 0 || hasIncognitoGaps) subject = `⚠️ Virtue Report for ${userName}: Activity Needs Review`;
-    if (isHandoff) subject = `📋 Virtue Report for ${userName}: Closing Summary`;
-    if (isWelcome) subject = `🤝 Welcome! You are now an Accountability Partner for ${userName}`;
+    let subject = `Virtue Report for ${userName}: All Clear`;
+    if (ignoredWarnings.length > 0 || hasIncognitoGaps) subject = `Virtue Report for ${userName}: Activity Needs Review`;
+    if (isHandoff) subject = `Virtue Report for ${userName}: Closing Summary`;
+    if (isWelcome) subject = `Welcome! You are now an Accountability Partner for ${userName}`;
 
     let welcomeHeaderHtml = "";
     if (isWelcome) {
@@ -525,11 +554,11 @@ async function dispatchReportSnapshot(profileData, options = {}) {
           <p style="margin: 0 0 8px 0; font-size: 15px; font-weight: bold; color: #0f5132;">
             Thank you for stepping up to support ${userName}!
           </p>
-          <p style="margin: 0 0 10px 0; font-size: 13px; color: #146c43; line-height: 1.5;">
-            ${userName} has selected you as a trusted accountability partner in the pursuit of digital integrity. Virtue exists to help believers live out 2 Peter 1:5a—<em>"And beside this, giving all diligence, add to your faith <strong style="color: #198754;">virtue</strong>..."</em>
+          <p style="margin: 0 0 8px 0; font-size: 13px; color: #146c43; line-height: 1.5;">
+            ${userName} has selected you as a trusted accountability partner in the pursuit of digital integrity.
           </p>
           <p style="margin: 0; font-size: 13px; color: #146c43; line-height: 1.5;">
-            Below is a summary of current activity, along with access to the live web dashboard.
+            Below is a summary of current activity, along with direct access to the live web dashboard.
           </p>
         </div>
       `;
@@ -540,7 +569,7 @@ async function dispatchReportSnapshot(profileData, options = {}) {
       const warningCountText = ignoredWarnings.length === 1 ? "1 Restricted Site Visited" : `${ignoredWarnings.length} Restricted Sites Visited`;
       warningsHtml = `
         <div style="background-color: #fff3cd; border: 1px solid #ffe69c; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-          <h3 style="margin: 0 0 10px 0; color: #664d03; font-size: 15px;">⚠️ ${warningCountText}</h3>
+          <h3 style="margin: 0 0 10px 0; color: #664d03; font-size: 15px;">Attention: ${warningCountText}</h3>
           <ul style="margin: 0; padding-left: 20px; color: #664d03; font-size: 13px;">
             ${ignoredWarnings.map(w => `
               <li style="margin-bottom: 6px;">
@@ -585,13 +614,15 @@ async function dispatchReportSnapshot(profileData, options = {}) {
 
     const footerLinkHtml = isHandoff ? `
       <div style="background-color: #e9ecef; padding: 12px; border-radius: 6px; text-align: center; font-size: 12px; color: #495057;">
-        ℹ <em>This is a final closing snapshot. Live web report access for this account has ended.</em>
+        <em>This is a final closing snapshot. Live web report access for this account has ended.</em>
       </div>
     ` : `
       <div style="text-align: center; border-top: 1px solid #e9ecef; padding-top: 20px; margin-top: 20px;">
         <a href="${dashboardUrl}" target="_blank" style="background-color: #198754; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">View Live Web Dashboard ➔</a>
       </div>
     `;
+
+    const introTextHtml = isWelcome ? "" : `<p style="font-size: 14px; color: #212529; margin-bottom: 20px;">Hello ${partnerName},<br><br>Here is ${userName}’s weekly browsing activity snapshot for the past 7 days.</p>`;
 
     const bodyHtml = `
       <!DOCTYPE html>
@@ -605,8 +636,7 @@ async function dispatchReportSnapshot(profileData, options = {}) {
             <h2 style="margin: 0; color: #198754; font-size: 22px;">Virtue Accountability Report</h2>
           </div>
           
-          <p style="font-size: 14px; color: #212529;">Hello ${partnerName},</p>
-          
+          ${introTextHtml}
           ${welcomeHeaderHtml}
           ${warningsHtml}
           
@@ -628,11 +658,11 @@ async function dispatchReportSnapshot(profileData, options = {}) {
             </tr>
           </table>
 
-          <h3 style="font-size: 15px; color: #212529; margin-bottom: 10px;">📊 Top Visited Domains</h3>
+          <h3 style="font-size: 15px; color: #212529; margin-bottom: 10px;">Top Visited Domains</h3>
           <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
             ${domainRowsHtml}
           </table>
-          <h3 style="font-size: 15px; color: #212529; margin-bottom: 10px;">🔍 Recent Web Searches</h3>
+          <h3 style="font-size: 15px; color: #212529; margin-bottom: 10px;">Recent Web Searches</h3>
           <ul style="padding-left: 20px; margin-bottom: 25px;">
             ${searchRowsHtml}
           </ul>
@@ -643,9 +673,10 @@ async function dispatchReportSnapshot(profileData, options = {}) {
       </html>
     `;
 
-    await sendGmailNotification({ toEmail: targetEmail, subject: subject, bodyHtml: bodyHtml });
+    return await sendGmailNotification({ toEmail: targetEmail, subject: subject, bodyHtml: bodyHtml });
   } catch (err) {
     console.error("Report snapshot dispatch error:", err);
+    return false;
   }
 }
 
@@ -721,7 +752,8 @@ function syncLogsToDriveFile(fileId, newLogs) {
 
     chrome.storage.local.get([
       "userName", "partnerName", "partnerEmail", "userEmail", 
-      "customBlacklist", "customWhitelist", "customKeywords", "filterMode", "settingsLastUpdated"
+      "customBlacklist", "customWhitelist", "customKeywords", "filterMode", "settingsLastUpdated",
+      "lastWeeklyReportSentAt", "nextWeeklyReportDueAt"
     ], async (localProfile) => {
       const logMap = new Map();
       [...existingLogs, ...newLogs].forEach(log => {
@@ -746,6 +778,13 @@ function syncLogsToDriveFile(fileId, newLogs) {
       if (!localProfile.partnerName && driveMeta.partnerName) profileUpdates.partnerName = driveMeta.partnerName;
       if (!localProfile.partnerEmail && driveMeta.partnerEmail) profileUpdates.partnerEmail = driveMeta.partnerEmail;
       if (!localProfile.userEmail && driveMeta.userEmail) profileUpdates.userEmail = driveMeta.userEmail;
+
+      if (driveMeta.lastWeeklyReportSentAt && driveMeta.lastWeeklyReportSentAt > (localProfile.lastWeeklyReportSentAt || 0)) {
+        profileUpdates.lastWeeklyReportSentAt = driveMeta.lastWeeklyReportSentAt;
+      }
+      if (driveMeta.nextWeeklyReportDueAt && driveMeta.nextWeeklyReportDueAt > (localProfile.nextWeeklyReportDueAt || 0)) {
+        profileUpdates.nextWeeklyReportDueAt = driveMeta.nextWeeklyReportDueAt;
+      }
 
       const driveSettingsTime = driveMeta.settingsLastUpdated || 0;
       const localSettingsTime = localProfile.settingsLastUpdated || 0;
@@ -779,6 +818,8 @@ function syncLogsToDriveFile(fileId, newLogs) {
           customKeywords: activeKeywords,
           filterMode: activeFilterMode,
           settingsLastUpdated: activeSettingsTime,
+          lastWeeklyReportSentAt: localProfile.lastWeeklyReportSentAt || driveMeta.lastWeeklyReportSentAt || 0,
+          nextWeeklyReportDueAt: localProfile.nextWeeklyReportDueAt || driveMeta.nextWeeklyReportDueAt || getNextMonday9AM(),
           lastUpdated: new Date().toISOString()
         },
         iv: encrypted.iv,
@@ -804,7 +845,7 @@ function syncLogsToDriveFile(fileId, newLogs) {
           console.warn(`Upload HTTP Error ${uploadRes.status}:`, errorBody);
         }
       })
-      .catch(err => console.error("Upload network error:", err));
+      .catch(err => console.warn("Upload network warning (will retry on next alarm):", err));
     });
   })
   .catch(err => {
@@ -979,6 +1020,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.type === "SEND_TEST_REPORT") {
+    chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "driveFileId"], async (profile) => {
+      if (!profile.partnerEmail || !profile.driveFileId) {
+        sendResponse({ success: false, error: "Missing partner configuration" });
+        return;
+      }
+
+      const success = await dispatchReportSnapshot(profile, { isHandoff: false });
+      sendResponse({ success });
+    });
+    return true;
+  }
+
   if (request.type === "RECOVER_USER_PIN") {
     chrome.storage.local.get(["userPin", "userName", "userEmail"], (data) => {
       const targetEmail = data.userEmail;
@@ -992,7 +1046,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const userPin = data.userPin || "1234";
       const userName = data.userName || "Friend";
 
-      const subject = "🔑 Your Virtue PIN Recovery";
+      const subject = "Your Virtue PIN Recovery";
       const bodyHtml = `
         <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 500px; border: 1px solid #e2e8f0; border-radius: 8px;">
           <h2 style="color: #198754; margin-top: 0;">Virtue Security Recovery</h2>
@@ -1071,6 +1125,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // ==========================================
 globalThis.authenticatedFetch = authenticatedFetch;
 globalThis.dispatchReportSnapshot = dispatchReportSnapshot;
-globalThis.checkAndSendWeeklyDigest = checkAndSendWeeklyDigest;
+globalThis.checkAndSendWeeklyReport = checkAndSendWeeklyReport;
 globalThis.flushBufferToDriveJson = flushBufferToDriveJson;
 globalThis.reconcilePartnerPermissions = reconcilePartnerPermissions;
