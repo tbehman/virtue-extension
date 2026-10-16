@@ -2,6 +2,11 @@ import { DEFAULT_BLOCKLIST } from './defaultBlocklist.js';
 import { COMPILED_KEYWORD_REGEXES } from './defaultKeywords.js';
 import { deriveKeyFromPin, encryptData, decryptData } from './cryptoUtils.js';
 
+const isNonChromeChromium = /Edg|OPR|Brave/.test(navigator.userAgent) || !/Chrome/.test(navigator.userAgent);
+if (isNonChromeChromium) {
+  console.log("⚠️ Virtue extension is designed exclusively for Google Chrome. Background worker halted.");
+}
+
 const LOG_FILE_NAME = "virtue_logs_v1.json";
 const SAFESEARCH_RULE_IDS = [101, 102, 103];
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -57,10 +62,8 @@ function extractSearchQuery(urlStr) {
     const url = new URL(urlStr);
     const domain = url.hostname.toLowerCase();
     
-    // Common search parameter keys used across almost all major search and video platforms
     const searchKeys = ["q", "query", "search_query", "p", "term", "keyword", "text"];
     
-    // Check if the URL has a search-related path or if it's a known major engine/YouTube
     const isSearchPath = url.pathname.includes("/search") || 
                          url.pathname.includes("/results") || 
                          url.pathname.includes("/query") ||
@@ -87,7 +90,7 @@ function getNextMonday9AM() {
   const now = new Date();
   const nextMonday = new Date(now);
 
-  const currentDay = now.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+  const currentDay = now.getDay();
   let daysUntilMonday = (1 - currentDay + 7) % 7;
 
   if (daysUntilMonday === 0 && now.getHours() >= 9) {
@@ -100,11 +103,8 @@ function getNextMonday9AM() {
   return nextMonday.getTime();
 }
 
-/**
- * Idempotent, Multi-Device Safe Permission Sync Engine
- * Atomic Order of Operations: Grant (Silently) -> Welcome Email -> Handoff Email -> Revoke Stale
- */
 async function reconcilePartnerPermissions() {
+  if (isNonChromeChromium) return;
   if (isSyncingPermissions) return;
 
   const myDeviceId = await getDeviceId();
@@ -144,7 +144,6 @@ async function reconcilePartnerPermissions() {
 
     const { permissions = [] } = await listRes.json();
 
-    // 1. GRANT FIRST (Silenced Google Drive automated email)
     const hasNewPartnerAccess = permissions.some(
       p => p.emailAddress && p.emailAddress.toLowerCase() === newEmail
     );
@@ -173,14 +172,12 @@ async function reconcilePartnerPermissions() {
       if (!addRes.ok) throw new Error(`Drive ACL Grant Failed: ${addRes.status}`);
       console.log(`✅ Granted explicit reader access silently to: ${newEmail}`);
 
-      // Dispatch initial Welcome Snapshot Email to new partner
       await dispatchReportSnapshot(
         { userName: data.userName, partnerName: data.partnerName, partnerEmail: newEmail, driveFileId },
         { isWelcome: true, targetEmail: newEmail }
       );
     }
 
-    // 2. SEND HANDOFF EMAIL to outgoing partner
     if (oldEmail && oldEmail !== newEmail) {
       const isOldPartnerListed = permissions.some(
         p => p.emailAddress && p.emailAddress.toLowerCase() === oldEmail
@@ -195,7 +192,6 @@ async function reconcilePartnerPermissions() {
       }
     }
 
-    // 3. REVOKE SECOND: Clean up old partner and public 'anyoneWithLink' permissions
     for (const perm of permissions) {
       if (perm.role === "owner") continue;
 
@@ -310,7 +306,6 @@ async function authenticatedFetch(url, options = {}) {
       try {
         let response = await fetch(url, options);
 
-        // Treat both 401 (Unauthorized) and 403 (Forbidden) identically for self-healing auth retry
         if (response.status === 401 || response.status === 403) {
           console.warn(`⚠️ Auth token rejected with status ${response.status}. Purging cache and retrying silently...`);
           chrome.identity.removeCachedAuthToken({ token }, () => {
@@ -394,6 +389,7 @@ async function sendGmailNotification({ toEmail, subject, bodyHtml, bodyText }) {
 // 2. INITIALIZE ALARMS & RULES (SELF-HEALING)
 // ==========================================
 function setupAlarms() {
+  if (isNonChromeChromium) return;
   chrome.alarms.get("flushBuffer", (alarm) => {
     if (!alarm || (alarm.scheduledTime && alarm.scheduledTime < Date.now())) {
       chrome.alarms.create("flushBuffer", { periodInMinutes: 1 });
@@ -407,35 +403,38 @@ function setupAlarms() {
   });
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  setupAlarms();
+if (!isNonChromeChromium) {
+  chrome.runtime.onInstalled.addListener(() => {
+    setupAlarms();
 
-  chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist", "userPin", "nextWeeklyReportDueAt"], (result) => {
-    const updates = {};
-    if (!result.filterMode) updates.filterMode = "blocklist";
-    if (!result.customBlacklist) updates.customBlacklist = ["facebook.com", "instagram.com"];
-    if (!result.customWhitelist) updates.customWhitelist = ["wikipedia.org", "google.com"];
-    if (!result.userPin) updates.userPin = "1234";
-    if (!result.nextWeeklyReportDueAt) updates.nextWeeklyReportDueAt = getNextMonday9AM();
+    chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist", "userPin", "nextWeeklyReportDueAt"], (result) => {
+      const updates = {};
+      if (!result.filterMode) updates.filterMode = "blocklist";
+      if (!result.customBlacklist) updates.customBlacklist = ["facebook.com", "instagram.com"];
+      if (!result.customWhitelist) updates.customWhitelist = ["wikipedia.org", "google.com"];
+      if (!result.userPin) updates.userPin = "1234";
+      if (!result.nextWeeklyReportDueAt) updates.nextWeeklyReportDueAt = getNextMonday9AM();
 
-    if (Object.keys(updates).length > 0) {
-      chrome.storage.local.set(updates, () => { updateDynamicSafeSearchRules(); });
-    } else {
-      updateDynamicSafeSearchRules();
-    }
+      if (Object.keys(updates).length > 0) {
+        chrome.storage.local.set(updates, () => { updateDynamicSafeSearchRules(); });
+      } else {
+        updateDynamicSafeSearchRules();
+      }
+    });
   });
-});
 
-chrome.runtime.onStartup.addListener(() => {
+  chrome.runtime.onStartup.addListener(() => {
+    setupAlarms();
+    updateDynamicSafeSearchRules();
+    reconcilePartnerPermissions();
+    checkAndSendWeeklyReport();
+  });
+
   setupAlarms();
-  updateDynamicSafeSearchRules();
-  reconcilePartnerPermissions();
-  checkAndSendWeeklyReport();
-});
-
-setupAlarms();
+}
 
 function updateDynamicSafeSearchRules() {
+  if (isNonChromeChromium) return;
   const newRules = [
     {
       id: 101,
@@ -461,6 +460,7 @@ function updateDynamicSafeSearchRules() {
 }
 
 function addToBuffer(data) {
+  if (isNonChromeChromium) return;
   chrome.storage.local.get({ logBuffer: [] }, (result) => {
     const buffer = result.logBuffer;
     buffer.push(data);
@@ -474,15 +474,18 @@ function addToBuffer(data) {
   });
 }
 
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "flushBuffer") {
-    flushBufferToDriveJson();
-  } else if (alarm.name === "checkWeeklyReport") {
-    checkAndSendWeeklyReport();
-  }
-});
+if (!isNonChromeChromium) {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === "flushBuffer") {
+      flushBufferToDriveJson();
+    } else if (alarm.name === "checkWeeklyReport") {
+      checkAndSendWeeklyReport();
+    }
+  });
+}
 
 async function checkAndSendWeeklyReport() {
+  if (isNonChromeChromium) return;
   chrome.storage.local.get([
     "userName", "partnerName", "partnerEmail", "driveFileId", 
     "lastWeeklyReportSentAt", "nextWeeklyReportDueAt"
@@ -508,6 +511,7 @@ async function checkAndSendWeeklyReport() {
 }
 
 async function dispatchReportSnapshot(profileData, options = {}) {
+  if (isNonChromeChromium) return false;
   const isHandoff = options.isHandoff || false;
   const isWelcome = options.isWelcome || false;
   const targetEmail = options.targetEmail || profileData.partnerEmail;
@@ -641,7 +645,7 @@ async function dispatchReportSnapshot(profileData, options = {}) {
       </div>
     `;
 
-    const introTextHtml = isWelcome ? "" : `<p style="font-size: 14px; color: #212529; margin-bottom: 20px;">Hello ${partnerName},<br><br>Here is ${userName}’s weekly browsing activity snapshot for the past 7 days.</p>`;
+    const introTextHtml = isWelcome ? "" : `<p style="font-size: 14px; color: #212529; margin-bottom: 20px;"></p>`;
 
     const bodyHtml = `
       <!DOCTYPE html>
@@ -703,6 +707,7 @@ async function dispatchReportSnapshot(profileData, options = {}) {
 // 3. DRIVE JSON SYNC ENGINE (LEAN SCHEMA V1)
 // ==========================================
 function flushBufferToDriveJson() {
+  if (isNonChromeChromium) return;
   chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
     addToBuffer({
       t: Date.now(),
@@ -735,6 +740,7 @@ function flushBufferToDriveJson() {
 }
 
 function findDriveJsonFileOnly(callback) {
+  if (isNonChromeChromium) return callback(null);
   const query = encodeURIComponent(`name = '${LOG_FILE_NAME}' and trashed = false`);
   authenticatedFetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`)
     .then(res => res.json())
@@ -750,6 +756,7 @@ function findDriveJsonFileOnly(callback) {
 }
 
 function syncLogsToDriveFile(fileId, newLogs) {
+  if (isNonChromeChromium) return;
   authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { "Cache-Control": "no-cache" }
   })
@@ -858,7 +865,6 @@ function syncLogsToDriveFile(fileId, newLogs) {
           const randomJitter = Math.floor(Math.random() * 500) + 200;
           setTimeout(() => syncLogsToDriveFile(fileId, newLogs), randomJitter);
         } else if (uploadRes.ok) {
-          // Local buffer is ONLY cleared upon absolute upload success (200 OK)
           chrome.storage.local.set({ logBuffer: [] });
         } else {
           const errorBody = await uploadRes.text();
@@ -876,81 +882,84 @@ function syncLogsToDriveFile(fileId, newLogs) {
 // ==========================================
 // 4. HIGH-PERFORMANCE INTERCEPTION ENGINE
 // ==========================================
-chrome.webNavigation.onBeforeNavigate.addListener((details) => {
-  if (details.frameId !== 0) return; 
-  const urlStr = details.url;
-  if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) return;
-  if (urlStr.includes("virtue_bypass=true")) return;
+if (!isNonChromeChromium) {
+  chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+    if (details.frameId !== 0) return; 
+    const urlStr = details.url;
+    if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) return;
+    if (urlStr.includes("virtue_bypass=true")) return;
 
-  chrome.storage.local.get({ filterMode: "blocklist", customBlacklist: [], customWhitelist: [], customKeywords: [] }, (settings) => {
-    try {
-      const url = new URL(urlStr);
-      const hostname = url.hostname.toLowerCase().trim();
-      const searchQuery = extractSearchQuery(urlStr);
-      const isYahooMediaLeak = hostname.startsWith("images.search.yahoo.com") || hostname.startsWith("video.search.yahoo.com");
+    chrome.storage.local.get({ filterMode: "blocklist", customBlacklist: [], customWhitelist: [], customKeywords: [] }, (settings) => {
+      try {
+        const url = new URL(urlStr);
+        const hostname = url.hostname.toLowerCase().trim();
+        const searchQuery = extractSearchQuery(urlStr);
+        const isYahooMediaLeak = hostname.startsWith("images.search.yahoo.com") || hostname.startsWith("video.search.yahoo.com");
 
-      let shouldBlock = false;
-      let blockReason = "domain";
+        let shouldBlock = false;
+        let blockReason = "domain";
 
-      const matchesCustomList = (domainList) => {
-        return domainList.some(domain => {
-          const cleanDomain = domain.toLowerCase().trim();
-          return hostname === cleanDomain || hostname.endsWith("." + cleanDomain);
-        });
-      };
+        const matchesCustomList = (domainList) => {
+          return domainList.some(domain => {
+            const cleanDomain = domain.toLowerCase().trim();
+            return hostname === cleanDomain || hostname.endsWith("." + cleanDomain);
+          });
+        };
 
-      if (settings.filterMode === "whitelist") {
-        shouldBlock = !matchesCustomList(settings.customWhitelist);
-      } else {
-        const inCustomBlacklist = matchesCustomList(settings.customBlacklist);
+        if (settings.filterMode === "whitelist") {
+          shouldBlock = !matchesCustomList(settings.customWhitelist);
+        } else {
+          const inCustomBlacklist = matchesCustomList(settings.customBlacklist);
 
-        let inStaticShield = false;
-        const parts = hostname.split('.');
-        for (let i = 0; i < parts.length - 1; i++) {
-          const rootDomain = parts.slice(i).join('.');
-          if (DEFAULT_BLOCKLIST.has(rootDomain)) {
-            inStaticShield = true;
-            break;
-          }
-        }
-
-        shouldBlock = inCustomBlacklist || inStaticShield || isYahooMediaLeak;
-
-        if (!shouldBlock) {
-          const cleanUrlStr = sanitizeStringForTesting(urlStr).toLowerCase();
-          const rawQuery = searchQuery ? searchQuery.toLowerCase() : "";
-          const targetText = `${cleanUrlStr} ${rawQuery}`;
-
-          const userKeywords = (settings.customKeywords || []).map(k => {
-            try { return new RegExp(`\\b${k.trim()}\\b`, 'i'); } catch (e) { return null; }
-          }).filter(Boolean);
-
-          const allRegexes = [...COMPILED_KEYWORD_REGEXES, ...userKeywords];
-
-          for (const regex of allRegexes) {
-            if (regex.test(targetText) || (rawQuery && regex.test(rawQuery))) {
-              shouldBlock = true;
-              blockReason = "keyword";
+          let inStaticShield = false;
+          const parts = hostname.split('.');
+          for (let i = 0; i < parts.length - 1; i++) {
+            const rootDomain = parts.slice(i).join('.');
+            if (DEFAULT_BLOCKLIST.has(rootDomain)) {
+              inStaticShield = true;
               break;
             }
           }
-        }
-      }
 
-      if (shouldBlock) {
-        const blockPageUrl = chrome.runtime.getURL(
-          `blocked.html?target=${encodeURIComponent(urlStr)}&reason=${blockReason}`
-        );
-        chrome.tabs.update(details.tabId, { url: blockPageUrl });
-      }
-    } catch (e) { console.error("Interception error:", e); }
+          shouldBlock = inCustomBlacklist || inStaticShield || isYahooMediaLeak;
+
+          if (!shouldBlock) {
+            const cleanUrlStr = sanitizeStringForTesting(urlStr).toLowerCase();
+            const rawQuery = searchQuery ? searchQuery.toLowerCase() : "";
+            const targetText = `${cleanUrlStr} ${rawQuery}`;
+
+            const userKeywords = (settings.customKeywords || []).map(k => {
+              try { return new RegExp(`\\b${k.trim()}\\b`, 'i'); } catch (e) { return null; }
+            }).filter(Boolean);
+
+            const allRegexes = [...COMPILED_KEYWORD_REGEXES, ...userKeywords];
+
+            for (const regex of allRegexes) {
+              if (regex.test(targetText) || (rawQuery && regex.test(rawQuery))) {
+                shouldBlock = true;
+                blockReason = "keyword";
+                break;
+              }
+            }
+          }
+        }
+
+        if (shouldBlock) {
+          const blockPageUrl = chrome.runtime.getURL(
+            `blocked.html?target=${encodeURIComponent(urlStr)}&reason=${blockReason}`
+          );
+          chrome.tabs.update(details.tabId, { url: blockPageUrl });
+        }
+      } catch (e) { console.error("Interception error:", e); }
+    });
   });
-});
+}
 
 // ==========================================
 // 5. GENERAL NAVIGATION LOGGING (LEAN SCHEMA V1)
 // ==========================================
 function processNavigation(url, tabId) {
+  if (isNonChromeChromium) return;
   if (!url.startsWith("http://") && !url.startsWith("https://")) return;
   if (url.includes(chrome.runtime.id) && url.includes("blocked.html")) return;
 
@@ -993,152 +1002,156 @@ function processNavigation(url, tabId) {
   }).catch(() => {});
 }
 
-chrome.webNavigation.onCompleted.addListener((details) => {
-  if (details.frameId !== 0) return;
-  processNavigation(details.url, details.tabId);
-});
+if (!isNonChromeChromium) {
+  chrome.webNavigation.onCompleted.addListener((details) => {
+    if (details.frameId !== 0) return;
+    processNavigation(details.url, details.tabId);
+  });
 
-chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
-  if (details.frameId !== 0) return;
-  processNavigation(details.url, details.tabId);
-});
+  chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+    if (details.frameId !== 0) return;
+    processNavigation(details.url, details.tabId);
+  });
+}
 
 // ==========================================
 // 6. MESSAGE LISTENERS FOR POPUP & RE-AUTH ACTIONS
 // ==========================================
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "updateProfile" || request.type === "UPDATE_PROFILE") {
-    const newProfile = request.profileData || request.profile || {};
-    const oldEmail = (request.oldPartnerEmail || "").trim().toLowerCase();
-    const newEmail = (newProfile.partnerEmail || "").trim().toLowerCase();
+if (!isNonChromeChromium) {
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "updateProfile" || request.type === "UPDATE_PROFILE") {
+      const newProfile = request.profileData || request.profile || {};
+      const oldEmail = (request.oldPartnerEmail || "").trim().toLowerCase();
+      const newEmail = (newProfile.partnerEmail || "").trim().toLowerCase();
 
-    (async () => {
-      const deviceId = await getDeviceId();
+      (async () => {
+        const deviceId = await getDeviceId();
 
-      await chrome.storage.local.set({
-        ...newProfile,
-        oldPartnerEmail: oldEmail,
-        syncStatus: "PENDING_SYNC",
-        syncRetryCount: 0,
-        lastInitiatorDeviceId: deviceId
-      });
-
-      reconcilePartnerPermissions();
-    })();
-
-    sendResponse({ success: true });
-    return false;
-  }
-
-  if (request.type === "TRIGGER_INTERACTIVE_AUTH") {
-    fetchNewToken(true, (token) => {
-      clearAuthFailureBanner();
-      flushBufferToDriveJson();
-    }, (err) => {
-      console.error("Interactive auth failed:", err);
-    });
-    return true;
-  }
-
-  if (request.type === "SEND_TEST_REPORT") {
-    chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "driveFileId"], async (profile) => {
-      if (!profile.partnerEmail || !profile.driveFileId) {
-        sendResponse({ success: false, error: "Missing partner configuration" });
-        return;
-      }
-
-      const success = await dispatchReportSnapshot(profile, { isHandoff: false });
-      sendResponse({ success });
-    });
-    return true;
-  }
-
-  if (request.type === "RECOVER_USER_PIN") {
-    chrome.storage.local.get(["userPin", "userName", "userEmail"], (data) => {
-      const targetEmail = data.userEmail;
-
-      if (!targetEmail) {
-        console.error("Virtue PIN Recovery Error: Profile email not available");
-        sendResponse({ success: false, error: "No user email found" });
-        return;
-      }
-
-      const userPin = data.userPin || "1234";
-      const userName = data.userName || "Friend";
-
-      const subject = "Your Virtue PIN Recovery";
-      const bodyHtml = `
-        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 500px; border: 1px solid #e2e8f0; border-radius: 8px;">
-          <h2 style="color: #198754; margin-top: 0;">Virtue Security Recovery</h2>
-          <p>Hello ${userName},</p>
-          <p>You requested recovery for your 4-digit Virtue security PIN.</p>
-          <div style="background-color: #f1f5f9; padding: 15px; font-size: 28px; font-weight: bold; letter-spacing: 6px; text-align: center; border-radius: 8px; color: #0f172a; margin: 20px 0;">
-            ${userPin}
-          </div>
-          <p style="color: #64748b; font-size: 12px; margin-top: 20px;">
-            If you did not request this PIN recovery, please check your Virtue extension settings.
-          </p>
-        </div>
-      `;
-
-      sendGmailNotification({
-        toEmail: targetEmail,
-        subject: subject,
-        bodyHtml: bodyHtml
-      }).then(success => sendResponse({ success }));
-    });
-    return true;
-  }
-
-  if (request.type === "SEND_PARTNER_HANDOFF_EMAIL") {
-    chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "driveFileId"], async (profile) => {
-      if (!profile.driveFileId) {
-        sendResponse({ success: false });
-        return;
-      }
-
-      if (request.oldEmail) {
-        await dispatchReportSnapshot(profile, { 
-          isHandoff: true, 
-          targetEmail: request.oldEmail 
+        await chrome.storage.local.set({
+          ...newProfile,
+          oldPartnerEmail: oldEmail,
+          syncStatus: "PENDING_SYNC",
+          syncRetryCount: 0,
+          lastInitiatorDeviceId: deviceId
         });
-      }
 
-      reconcilePartnerPermissions();
+        reconcilePartnerPermissions();
+      })();
+
       sendResponse({ success: true });
-    });
-    return true;
-  }
+      return false;
+    }
 
-  if (request.type === "SWITCH_GOOGLE_ACCOUNT") {
-    flushBufferToDriveJson();
+    if (request.type === "TRIGGER_INTERACTIVE_AUTH") {
+      fetchNewToken(true, (token) => {
+        clearAuthFailureBanner();
+        flushBufferToDriveJson();
+      }, (err) => {
+        console.error("Interactive auth failed:", err);
+      });
+      return true;
+    }
 
-    chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "driveFileId", "authToken"], async (profile) => {
-      if (profile.partnerEmail && profile.driveFileId) {
-        await dispatchReportSnapshot(profile, { isHandoff: true, targetEmail: profile.partnerEmail });
-      }
+    if (request.type === "SEND_TEST_REPORT") {
+      chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "driveFileId"], async (profile) => {
+        if (!profile.partnerEmail || !profile.driveFileId) {
+          sendResponse({ success: false, error: "Missing partner configuration" });
+          return;
+        }
 
-      const token = profile.authToken;
-      if (token) {
-        fetch(`https://accounts.google.com/o/oauth2/revoke?token=${token}`)
-          .finally(() => {
-            const clearStorageAndRespond = () => {
-              chrome.storage.local.remove(["authToken", "refreshToken", "driveFileId", "userEmail"], () => {
-                sendResponse({ success: true });
-              });
-            };
+        const success = await dispatchReportSnapshot(profile, { isHandoff: false });
+        sendResponse({ success });
+      });
+      return true;
+    }
 
-            chrome.identity.removeCachedAuthToken({ token }, clearStorageAndRespond);
+    if (request.type === "RECOVER_USER_PIN") {
+      chrome.storage.local.get(["userPin", "userName", "userEmail"], (data) => {
+        const targetEmail = data.userEmail;
+
+        if (!targetEmail) {
+          console.error("Virtue PIN Recovery Error: Profile email not available");
+          sendResponse({ success: false, error: "No user email found" });
+          return;
+        }
+
+        const userPin = data.userPin || "1234";
+        const userName = data.userName || "Friend";
+
+        const subject = "Your Virtue PIN Recovery";
+        const bodyHtml = `
+          <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 500px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #198754; margin-top: 0;">Virtue Security Recovery</h2>
+            <p>Hello ${userName},</p>
+            <p>You requested recovery for your 4-digit Virtue security PIN.</p>
+            <div style="background-color: #f1f5f9; padding: 15px; font-size: 28px; font-weight: bold; letter-spacing: 6px; text-align: center; border-radius: 8px; color: #0f172a; margin: 20px 0;">
+              ${userPin}
+            </div>
+            <p style="color: #64748b; font-size: 12px; margin-top: 20px;">
+              If you did not request this PIN recovery, please check your Virtue extension settings.
+            </p>
+          </div>
+        `;
+
+        sendGmailNotification({
+          toEmail: targetEmail,
+          subject: subject,
+          bodyHtml: bodyHtml
+        }).then(success => sendResponse({ success }));
+      });
+      return true;
+    }
+
+    if (request.type === "SEND_PARTNER_HANDOFF_EMAIL") {
+      chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "driveFileId"], async (profile) => {
+        if (!profile.driveFileId) {
+          sendResponse({ success: false });
+          return;
+        }
+
+        if (request.oldEmail) {
+          await dispatchReportSnapshot(profile, { 
+            isHandoff: true, 
+            targetEmail: request.oldEmail 
           });
-      } else {
-        chrome.storage.local.remove(["authToken", "refreshToken", "driveFileId", "userEmail"], () => {
-          sendResponse({ success: true });
-        });
-      }
-    });
-    return true;
-  }
-});
+        }
+
+        reconcilePartnerPermissions();
+        sendResponse({ success: true });
+      });
+      return true;
+    }
+
+    if (request.type === "SWITCH_GOOGLE_ACCOUNT") {
+      flushBufferToDriveJson();
+
+      chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "driveFileId", "authToken"], async (profile) => {
+        if (profile.partnerEmail && profile.driveFileId) {
+          await dispatchReportSnapshot(profile, { isHandoff: true, targetEmail: profile.partnerEmail });
+        }
+
+        const token = profile.authToken;
+        if (token) {
+          fetch(`https://accounts.google.com/o/oauth2/revoke?token=${token}`)
+            .finally(() => {
+              const clearStorageAndRespond = () => {
+                chrome.storage.local.remove(["authToken", "refreshToken", "driveFileId", "userEmail"], () => {
+                  sendResponse({ success: true });
+                });
+              };
+
+              chrome.identity.removeCachedAuthToken({ token }, clearStorageAndRespond);
+            });
+        } else {
+          chrome.storage.local.remove(["authToken", "refreshToken", "driveFileId", "userEmail"], () => {
+            sendResponse({ success: true });
+          });
+        }
+      });
+      return true;
+    }
+  });
+}
 
 // ==========================================
 // 7. EXPOSE HELPERS FOR DEVTOOLS CONSOLE TESTING
