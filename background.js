@@ -7,7 +7,14 @@ if (isNonChromeChromium) {
   console.log("⚠️ Virtue extension is designed exclusively for Google Chrome. Background worker halted.");
 }
 
-const LOG_FILE_NAME = "virtue_logs_v1.json";
+// ==========================================
+// VIRTUE CONFIGURATION (CENTRALIZED - ROOT ONLY)
+// ==========================================
+const VIRTUE_CONFIG = {
+  FILE_NAME: "virtue_logs_v1.json",
+  MIME_FILE: "application/json"
+};
+
 const SAFESEARCH_RULE_IDS = [101, 102, 103];
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -464,7 +471,10 @@ function addToBuffer(data) {
   chrome.storage.local.get({ logBuffer: [] }, (result) => {
     const buffer = result.logBuffer;
     buffer.push(data);
+    console.log(`📥 [BUFFER ADD] Added item type: "${data.type}". New buffer length: ${buffer.length}/10`);
+    
     if (buffer.length >= 10) {
+      console.log(`🚀 [BUFFER TRIGGER] Threshold of 10 items reached! Flushing buffer to Drive...`);
       chrome.storage.local.set({ logBuffer: buffer }, () => {
         flushBufferToDriveJson();
       });
@@ -704,179 +714,268 @@ async function dispatchReportSnapshot(profileData, options = {}) {
 }
 
 // ==========================================
-// 3. DRIVE JSON SYNC ENGINE (LEAN SCHEMA V1)
+// 3. ID-ANCHORED ROOT SYNC ENGINE (WITH SINGLE-EMAIL NOTIFICATION ON RESET)
 // ==========================================
 function flushBufferToDriveJson() {
   if (isNonChromeChromium) return;
-  chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
-    addToBuffer({
-      t: Date.now(),
-      type: "HEARTBEAT",
-      incognitoAllowed: isAllowed,
-      device: getDeviceInfo()
-    });
+  console.log("🟢 [SYNC ENGINE] Triggered flushBufferToDriveJson()");
 
-    chrome.storage.local.get({ logBuffer: [], driveFileId: "", partnerEmail: "" }, (result) => {
-      const buffer = result.logBuffer;
-      let driveFileId = result.driveFileId;
+  chrome.storage.local.get({ logBuffer: [], driveFileId: "" }, async (res) => {
+    const buffer = res.logBuffer;
+    console.log(`📋 [SYNC ENGINE] Buffer items to sync: ${buffer.length}`);
 
-      reconcilePartnerPermissions();
+    if (buffer.length === 0) {
+      console.log("ℹ️ [SYNC ENGINE] Buffer is empty. Aborting sync.");
+      return;
+    }
 
-      if (buffer.length === 0) return;
+    let fileId = res.driveFileId;
 
-      let uniqueLogs = Array.from(new Set(buffer.map(a => a.url || a.t))).map(key => buffer.find(a => (a.url || a.t) === key));
-
-      if (!driveFileId) {
-        findDriveJsonFileOnly((fileId) => { 
-          if (fileId) {
-            syncLogsToDriveFile(fileId, uniqueLogs); 
-          }
+    try {
+      if (!fileId) {
+        console.log("🏗️ [SYNC ENGINE] No cached driveFileId. Provisioning a brand-new root log file...");
+        await new Promise((resolve, reject) => {
+          fetchNewToken(false, async (token) => {
+            try {
+              fileId = await createBrandNewRootDriveFile(token);
+              resolve();
+            } catch (err) {
+              reject(err);
+            }
+          }, reject);
         });
-      } else {
-        syncLogsToDriveFile(driveFileId, uniqueLogs);
-      }
-    });
-  });
-}
-
-function findDriveJsonFileOnly(callback) {
-  if (isNonChromeChromium) return callback(null);
-  const query = encodeURIComponent(`name = '${LOG_FILE_NAME}' and trashed = false`);
-  authenticatedFetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`)
-    .then(res => res.json())
-    .then(data => {
-      if (data.files && data.files.length > 0) {
-        const fileId = data.files[0].id;
-        chrome.storage.local.set({ driveFileId: fileId }, () => callback(fileId));
-      } else {
-        callback(null);
-      }
-    })
-    .catch(() => callback(null));
-}
-
-function syncLogsToDriveFile(fileId, newLogs) {
-  if (isNonChromeChromium) return;
-  authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-    headers: { "Cache-Control": "no-cache" }
-  })
-  .then(async (res) => {
-    const etag = res.headers.get("ETag");
-    let fileData = { metadata: { version: "1.0" } };
-    let existingLogs = [];
-
-    const { key } = await getActiveEncryptionKey();
-
-    try { 
-      fileData = await res.json(); 
-      if (fileData.encryptedData && fileData.iv) {
-        existingLogs = await decryptData(fileData.encryptedData, fileData.iv, key);
-      } else if (fileData.logs) {
-        existingLogs = fileData.logs;
-      }
-    } catch (e) {}
-
-    chrome.storage.local.get([
-      "userName", "partnerName", "partnerEmail", "userEmail", 
-      "customBlacklist", "customWhitelist", "customKeywords", "filterMode", "settingsLastUpdated",
-      "lastWeeklyReportSentAt", "nextWeeklyReportDueAt"
-    ], async (localProfile) => {
-      const logMap = new Map();
-      [...existingLogs, ...newLogs].forEach(log => {
-        const timestamp = log.t || log.timestamp;
-        const uniqueKey = `${timestamp}_${log.url || log.type || ''}`;
-        logMap.set(uniqueKey, log);
-      });
-      const combined = Array.from(logMap.values());
-
-      const cutoffTime = Date.now() - SEVEN_DAYS_MS;
-      const rollingLogs = combined.filter(log => {
-        const logTime = log.t || new Date(log.timestamp).getTime();
-        return !isNaN(logTime) && logTime > cutoffTime;
-      });
-
-      const encrypted = await encryptData(rollingLogs, key);
-
-      const driveMeta = fileData.metadata || {};
-      const profileUpdates = {};
-
-      if (!localProfile.userName && driveMeta.userName) profileUpdates.userName = driveMeta.userName;
-      if (!localProfile.partnerName && driveMeta.partnerName) profileUpdates.partnerName = driveMeta.partnerName;
-      if (!localProfile.partnerEmail && driveMeta.partnerEmail) profileUpdates.partnerEmail = driveMeta.partnerEmail;
-      if (!localProfile.userEmail && driveMeta.userEmail) profileUpdates.userEmail = driveMeta.userEmail;
-
-      if (driveMeta.lastWeeklyReportSentAt && driveMeta.lastWeeklyReportSentAt > (localProfile.lastWeeklyReportSentAt || 0)) {
-        profileUpdates.lastWeeklyReportSentAt = driveMeta.lastWeeklyReportSentAt;
-      }
-      if (driveMeta.nextWeeklyReportDueAt && driveMeta.nextWeeklyReportDueAt > (localProfile.nextWeeklyReportDueAt || 0)) {
-        profileUpdates.nextWeeklyReportDueAt = driveMeta.nextWeeklyReportDueAt;
       }
 
-      const driveSettingsTime = driveMeta.settingsLastUpdated || 0;
-      const localSettingsTime = localProfile.settingsLastUpdated || 0;
+      await performDriveUploadCycle(fileId, buffer);
 
-      if (driveSettingsTime > localSettingsTime) {
-        if (driveMeta.customBlacklist) profileUpdates.customBlacklist = driveMeta.customBlacklist;
-        if (driveMeta.customWhitelist) profileUpdates.customWhitelist = driveMeta.customWhitelist;
-        if (driveMeta.customKeywords) profileUpdates.customKeywords = driveMeta.customKeywords;
-        if (driveMeta.filterMode) profileUpdates.filterMode = driveMeta.filterMode;
-        profileUpdates.settingsLastUpdated = driveSettingsTime;
-      }
+    } catch (err) {
+      console.error("❌ [SYNC ENGINE CRITICAL FAILURE]:", err);
+      
+      // If 404 or 403, the old log was removed/trashed/changed!
+      if (err.message && (err.message.includes("404") || err.message.includes("403"))) {
+        console.warn("⚠️ [SYNC ENGINE] Drive file unreachable/deleted. Notifying partner with new link & buffer, wiping ID, and creating fresh root file...");
+        
+        // 1. Wipe stale ID and provision a brand new root file immediately
+        await chrome.storage.local.remove(["driveFileId"]);
 
-      if (Object.keys(profileUpdates).length > 0) chrome.storage.local.set(profileUpdates);
+        try {
+          await new Promise((resolve, reject) => {
+            fetchNewToken(false, async (token) => {
+              try {
+                const newFileId = await createBrandNewRootDriveFile(token);
+                
+                // 2. Notify partner about the removed/changed log, include buffer items and the NEW dashboard link
+                await notifyPartnerLogReset(newFileId, buffer);
 
-      const activeSettingsTime = Math.max(localSettingsTime, driveSettingsTime);
-      const activeBlacklist = localSettingsTime >= driveSettingsTime ? (localProfile.customBlacklist || driveMeta.customBlacklist || []) : (driveMeta.customBlacklist || []);
-      const activeWhitelist = localSettingsTime >= driveSettingsTime ? (localProfile.customWhitelist || driveMeta.customWhitelist || []) : (driveMeta.customWhitelist || []);
-      const activeKeywords  = localSettingsTime >= driveSettingsTime ? (localProfile.customKeywords || driveMeta.customKeywords || []) : (driveMeta.customKeywords || []);
-      const activeFilterMode = localSettingsTime >= driveSettingsTime ? (localProfile.filterMode || driveMeta.filterMode || "blocklist") : (driveMeta.filterMode || "blocklist");
-
-      const updatedPayload = {
-        metadata: {
-          ...driveMeta,
-          version: "1.0",
-          userName: localProfile.userName || driveMeta.userName || "",
-          partnerName: localProfile.partnerName || driveMeta.partnerName || "",
-          partnerEmail: localProfile.partnerEmail || driveMeta.partnerEmail || "",
-          userEmail: localProfile.userEmail || driveMeta.userEmail || "",
-          customBlacklist: activeBlacklist,
-          customWhitelist: activeWhitelist,
-          customKeywords: activeKeywords,
-          filterMode: activeFilterMode,
-          settingsLastUpdated: activeSettingsTime,
-          lastWeeklyReportSentAt: localProfile.lastWeeklyReportSentAt || driveMeta.lastWeeklyReportSentAt || 0,
-          nextWeeklyReportDueAt: localProfile.nextWeeklyReportDueAt || driveMeta.nextWeeklyReportDueAt || getNextMonday9AM(),
-          lastUpdated: new Date().toISOString()
-        },
-        iv: encrypted.iv,
-        encryptedData: encrypted.ciphertext
-      };
-
-      const uploadHeaders = { "Content-Type": "application/json" };
-      if (etag) uploadHeaders["If-Match"] = etag;
-
-      authenticatedFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-        method: "PATCH",
-        headers: uploadHeaders,
-        body: JSON.stringify(updatedPayload)
-      })
-      .then(async (uploadRes) => {
-        if (uploadRes.status === 412) {
-          const randomJitter = Math.floor(Math.random() * 500) + 200;
-          setTimeout(() => syncLogsToDriveFile(fileId, newLogs), randomJitter);
-        } else if (uploadRes.ok) {
-          chrome.storage.local.set({ logBuffer: [] });
-        } else {
-          const errorBody = await uploadRes.text();
-          console.warn(`Upload HTTP Error ${uploadRes.status}: Local buffer preserved for retry.`, errorBody);
+                // Immediately sync current buffer to the new file
+                await performDriveUploadCycle(newFileId, buffer);
+                resolve();
+              } catch (e) { reject(e); }
+            }, reject);
+          });
+        } catch (innerErr) {
+          console.error("❌ Failed to recover and sync after file removal:", innerErr);
         }
-      })
-      .catch(err => console.warn("Upload network warning: Local buffer preserved for retry.", err));
-    });
-  })
-  .catch(err => {
-    console.warn("Sync fetch error: Local buffer preserved for retry.", err);
+      }
+    }
   });
+}
+
+async function notifyPartnerLogReset(newFileId, buffer) {
+  const profile = await new Promise(r => chrome.storage.local.get(["userName", "partnerEmail", "partnerName"], r));
+  if (!profile.partnerEmail) return;
+
+  const { keyHex } = await getActiveEncryptionKey();
+  const dashboardUrl = `https://tbehman.github.io/virtue-extension/?fileId=${newFileId}#key=${keyHex}`;
+  const userName = profile.userName || "User";
+  const subject = `Notice & New Link: Virtue Tracking Vault Reset for ${userName}`;
+
+  const bufferSummaryHtml = buffer.length > 0 ? `
+    <div style="background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+      <h4 style="margin: 0 0 10px 0; color: #212529; font-size: 14px;">Recent Activity at Time of Reset (${buffer.length} items):</h4>
+      <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #495057;">
+		${buffer.slice(-5).map(b => `<li><strong>${new Date(b.t || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</strong> - ${b.title || b.url || b.type}</li>`).join('')} </ul>
+    </div>
+  ` : `<p style="font-size: 13px; color: #6c757d;">No pending buffer items at the time of reset.</p>`;
+
+  const bodyHtml = `
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8f9fa; margin: 0; padding: 20px;">
+      <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e9ecef; overflow: hidden; padding: 25px;">
+        <h2 style="color: #d97706; font-size: 20px; margin-top: 0;">Virtue Vault Reset Notice</h2>
+        <p style="font-size: 14px; color: #212529; line-height: 1.5;">
+          Hello ${profile.partnerName || "Partner"},
+        </p>
+        <p style="font-size: 14px; color: #212529; line-height: 1.5;">
+          This is an automated notification that the previous tracking log for <strong>${userName}</strong> was removed, moved, or modified on Google Drive. A brand new tracking vault has been automatically provisioned.
+        </p>
+        ${bufferSummaryHtml}
+        <div style="text-align: center; border-top: 1px solid #e9ecef; padding-top: 20px; margin-top: 20px;">
+          <a href="${dashboardUrl}" target="_blank" style="background-color: #198754; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">View New Live Web Dashboard ➔</a>
+        </div>
+        <p style="font-size: 12px; color: #6c757d; text-align: center; margin-top: 25px;"><strong>Virtue Accountability Team</strong></p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  await sendGmailNotification({ toEmail: profile.partnerEmail, subject, bodyHtml });
+}
+
+async function createBrandNewRootDriveFile(token) {
+  const createRes = await fetch("https://www.googleapis.com/drive/v3/files", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: VIRTUE_CONFIG.FILE_NAME,
+      mimeType: VIRTUE_CONFIG.MIME_FILE
+    })
+  });
+
+  if (!createRes.ok) throw new Error(`Vault file creation failed with status ${createRes.status}`);
+  const fileJson = await createRes.json();
+  const newFileId = fileJson.id;
+
+  await chrome.storage.local.set({ driveFileId: newFileId });
+
+  const profile = await new Promise(r => chrome.storage.local.get([
+    "userName", "partnerName", "partnerEmail", "userEmail", 
+    "customBlacklist", "customWhitelist", "customKeywords", "filterMode"
+  ], r));
+
+  const initialPayload = {
+    metadata: {
+      version: "1.0",
+      userName: profile.userName || "",
+      partnerName: profile.partnerName || "",
+      partnerEmail: profile.partnerEmail || "",
+      userEmail: profile.userEmail || "",
+      customBlacklist: profile.customBlacklist || [],
+      customWhitelist: profile.customWhitelist || [],
+      customKeywords: profile.customKeywords || [],
+      filterMode: profile.filterMode || "blocklist",
+      settingsLastUpdated: Date.now(),
+      lastUpdated: new Date().toISOString()
+    },
+    iv: "",
+    encryptedData: ""
+  };
+
+  await fetch(`https://www.googleapis.com/upload/drive/v3/files/${newFileId}?uploadType=media`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(initialPayload)
+  });
+
+  if (profile.partnerEmail) {
+    await authenticatedFetch(
+      `https://www.googleapis.com/drive/v3/files/${newFileId}/permissions?sendNotificationEmail=false`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "reader", type: "user", emailAddress: profile.partnerEmail })
+      }
+    );
+
+    await dispatchReportSnapshot({
+      userName: profile.userName,
+      partnerName: profile.partnerName,
+      partnerEmail: profile.partnerEmail,
+      driveFileId: newFileId
+    }, { isWelcome: true, targetEmail: profile.partnerEmail });
+  }
+
+  console.log(`✨ [ROOT ID-ANCHOR] Created brand new root log file ID: ${newFileId}`);
+  return newFileId;
+}
+
+async function performDriveUploadCycle(fileId, newLogs) {
+  console.log(`🌐 [UPLOAD CYCLE] Fetching remote file content for ID: ${fileId}...`);
+  
+  const res = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: { "Cache-Control": "no-cache" }
+  });
+
+  if (!res.ok) {
+    throw new Error(`Drive fetch failed with status ${res.status}`);
+  }
+
+  const etag = res.headers.get("ETag");
+  let fileData = { metadata: { version: "1.0" } };
+  let existingLogs = [];
+  const { key } = await getActiveEncryptionKey();
+
+  try {
+    fileData = await res.json();
+    if (fileData.encryptedData && fileData.iv) {
+      existingLogs = await decryptData(fileData.encryptedData, fileData.iv, key);
+      console.log(`🔓 [UPLOAD CYCLE] Decrypted ${existingLogs.length} existing logs from Drive.`);
+    }
+  } catch (e) {
+    console.warn("⚠️ [UPLOAD CYCLE] File body empty or unparsable. Treating as fresh vault.");
+  }
+
+  const localProfile = await new Promise(r => chrome.storage.local.get([
+    "userName", "partnerName", "partnerEmail", "userEmail", 
+    "customBlacklist", "customWhitelist", "customKeywords", "filterMode", "settingsLastUpdated"
+  ], r));
+
+  const logMap = new Map();
+  [...existingLogs, ...newLogs].forEach(log => {
+    const timestamp = log.t || log.timestamp;
+    const uniqueKey = `${timestamp}_${log.url || log.type || ''}`;
+    logMap.set(uniqueKey, log);
+  });
+  const combined = Array.from(logMap.values());
+  const cutoffTime = Date.now() - SEVEN_DAYS_MS;
+  const rollingLogs = combined.filter(log => {
+    const logTime = log.t || new Date(log.timestamp).getTime();
+    return !isNaN(logTime) && logTime > cutoffTime;
+  });
+
+  console.log(`📦 [UPLOAD CYCLE] Encrypting ${rollingLogs.length} rolling logs...`);
+  const encrypted = await encryptData(rollingLogs, key);
+
+  const driveMeta = fileData.metadata || {};
+  const updatedPayload = {
+    metadata: {
+      ...driveMeta,
+      version: "1.0",
+      userName: localProfile.userName || driveMeta.userName || "",
+      partnerName: localProfile.partnerName || driveMeta.partnerName || "",
+      partnerEmail: localProfile.partnerEmail || driveMeta.partnerEmail || "",
+      userEmail: localProfile.userEmail || driveMeta.userEmail || "",
+      settingsLastUpdated: localProfile.settingsLastUpdated || driveMeta.settingsLastUpdated || Date.now(),
+      lastUpdated: new Date().toISOString()
+    },
+    iv: encrypted.iv,
+    encryptedData: encrypted.ciphertext
+  };
+
+  const uploadHeaders = { "Content-Type": "application/json" };
+  if (etag) uploadHeaders["If-Match"] = etag;
+
+  console.log(`🚀 [UPLOAD CYCLE] Sending PATCH request to Drive...`);
+  const uploadRes = await authenticatedFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+    method: "PATCH",
+    headers: uploadHeaders,
+    body: JSON.stringify(updatedPayload)
+  });
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    throw new Error(`Drive PATCH failed [Status ${uploadRes.status}]: ${errText}`);
+  }
+
+  console.log("✅ [UPLOAD CYCLE SUCCESS] Buffer synced to Drive and cleared locally.");
+  await chrome.storage.local.set({ logBuffer: [], syncFailCount: 0 });
 }
 
 // ==========================================
@@ -1135,7 +1234,7 @@ if (!isNonChromeChromium) {
           fetch(`https://accounts.google.com/o/oauth2/revoke?token=${token}`)
             .finally(() => {
               const clearStorageAndRespond = () => {
-                chrome.storage.local.remove(["authToken", "refreshToken", "driveFileId", "userEmail"], () => {
+                chrome.storage.local.remove(["authToken", "refreshToken", "driveFileId", "virtueFolderId", "userEmail"], () => {
                   sendResponse({ success: true });
                 });
               };
@@ -1143,7 +1242,7 @@ if (!isNonChromeChromium) {
               chrome.identity.removeCachedAuthToken({ token }, clearStorageAndRespond);
             });
         } else {
-          chrome.storage.local.remove(["authToken", "refreshToken", "driveFileId", "userEmail"], () => {
+          chrome.storage.local.remove(["authToken", "refreshToken", "driveFileId", "virtueFolderId", "userEmail"], () => {
             sendResponse({ success: true });
           });
         }
@@ -1161,3 +1260,4 @@ globalThis.dispatchReportSnapshot = dispatchReportSnapshot;
 globalThis.checkAndSendWeeklyReport = checkAndSendWeeklyReport;
 globalThis.flushBufferToDriveJson = flushBufferToDriveJson;
 globalThis.reconcilePartnerPermissions = reconcilePartnerPermissions;
+globalThis.createBrandNewRootDriveFile = createBrandNewRootDriveFile;

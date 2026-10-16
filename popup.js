@@ -101,9 +101,9 @@ function loadProfileAndRender() {
         if (viewSheetLink) {
           try {
             const { keyHex } = await deriveKeyFromPin(data.userPin, data.userEmail);
-            viewSheetLink.href = `[https://tbehman.github.io/virtue-extension/?fileId=$](https://tbehman.github.io/virtue-extension/?fileId=$){data.driveFileId}#key=${keyHex}`;
+            viewSheetLink.href = `https://tbehman.github.io/virtue-extension/?fileId=${data.driveFileId}#key=${keyHex}`;
           } catch (e) {
-            viewSheetLink.href = `[https://tbehman.github.io/virtue-extension/?fileId=$](https://tbehman.github.io/virtue-extension/?fileId=$){data.driveFileId}`;
+            viewSheetLink.href = `https://tbehman.github.io/virtue-extension/?fileId=${data.driveFileId}`;
           }
         }
       }
