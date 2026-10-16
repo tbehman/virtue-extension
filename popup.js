@@ -10,13 +10,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const settingsScreen = document.getElementById("settingsScreen");
 
   if (isNonChromeChromium) {
-    if (warningCard) warningCard.style.display = "block";
+    toggleHidden(warningCard, false); // Reveal warning banner
     toggleHidden(setupScreen, true);
     toggleHidden(dashboardScreen, true);
     toggleHidden(settingsScreen, true);
     return; // Halt further initialization on non-Chrome browsers
   } else {
-    if (warningCard) warningCard.style.display = "none";
+    toggleHidden(warningCard, true);
   }
 
   initPopup();
@@ -26,8 +26,10 @@ function toggleHidden(element, isHidden) {
   if (!element) return;
   if (isHidden) {
     element.classList.add("hidden");
+    element.style.display = "none";
   } else {
     element.classList.remove("hidden");
+    element.style.display = "block";
   }
 }
 
@@ -99,9 +101,9 @@ function loadProfileAndRender() {
         if (viewSheetLink) {
           try {
             const { keyHex } = await deriveKeyFromPin(data.userPin, data.userEmail);
-            viewSheetLink.href = `https://tbehman.github.io/virtue-extension/?fileId=${data.driveFileId}#key=${keyHex}`;
+            viewSheetLink.href = `[https://tbehman.github.io/virtue-extension/?fileId=$](https://tbehman.github.io/virtue-extension/?fileId=$){data.driveFileId}#key=${keyHex}`;
           } catch (e) {
-            viewSheetLink.href = `https://tbehman.github.io/virtue-extension/?fileId=${data.driveFileId}`;
+            viewSheetLink.href = `[https://tbehman.github.io/virtue-extension/?fileId=$](https://tbehman.github.io/virtue-extension/?fileId=$){data.driveFileId}`;
           }
         }
       }
