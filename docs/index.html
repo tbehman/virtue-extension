@@ -725,7 +725,6 @@
       let domainCounts = {};
       let activeDaysSet = new Set();
       
-      // Clean single-pass deduplication for consecutive identical search queries within 2 minutes
       globalSearches = [];
       const dailyCounts = {};
 
@@ -744,7 +743,6 @@
           if (dailyCounts[dateStrKey] !== undefined) dailyCounts[dateStrKey]++;
         }
 
-        // Search Query Extraction & Time-Window Deduplication
         if (log.q && log.q.trim() !== "" && log.q.trim().toUpperCase() !== "N/A") {
           const currentQuery = log.q.trim().toLowerCase();
           const currentTime = logMs || 0;

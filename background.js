@@ -569,14 +569,87 @@ async function dispatchReportSnapshot(profileData, options = {}) {
       .sort((a, b) => (b.t || b.timestamp || 0) - (a.t || a.timestamp || 0));
 
     const ignoredWarnings = currentWeekLogs.filter(l => l.flag === 1 || (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
-    const hasIncognitoGaps = heartbeats.some(hb => hb.incognitoAllowed === false);
+    
+    // ==========================================
+    // UNIFIED INCOGNITO WINDOW & WARNING BUILDER
+    // ==========================================
+    let noticeHtml = "";
+    let hasAuditNotice = false;
+
+    const devices = {};
+    heartbeats.forEach(hb => {
+      const devName = hb.device || "Primary Device";
+      if (!devices[devName]) devices[devName] = [];
+      devices[devName].push(hb);
+    });
+
+    Object.entries(devices).forEach(([devName, beats]) => {
+      beats.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      const unmonitoredWindows = [];
+      let currentWindowStart = null;
+
+      beats.forEach((hb, idx) => {
+        const hbTime = new Date(hb.timestamp);
+        if (!hb.incognitoAllowed) {
+          if (!currentWindowStart) currentWindowStart = hbTime;
+          if (idx === beats.length - 1) {
+            unmonitoredWindows.push({ start: currentWindowStart, end: null });
+          }
+        } else {
+          if (currentWindowStart) {
+            unmonitoredWindows.push({ start: currentWindowStart, end: hbTime });
+            currentWindowStart = null;
+          }
+        }
+      });
+
+      if (unmonitoredWindows.length > 0) {
+        hasAuditNotice = true;
+        noticeHtml += `<div style="margin-bottom: 12px;"><strong>⚠️ ${devName} — Unmonitored Incognito Window(s):</strong><ul style="margin: 4px 0 0 0; padding-left: 20px; font-size: 13px;">`;
+        unmonitoredWindows.forEach(win => {
+          const startStr = new Date(win.start).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' });
+          if (win.end) {
+            const endStr = new Date(win.end).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' });
+            const diffMin = Math.round((win.end - win.start) / 60000);
+            const durationStr = diffMin < 60 ? `${Math.max(1, diffMin)} min` : `${(diffMin / 60).toFixed(1)} hr`;
+            noticeHtml += `<li>${startStr} – ${endStr} (${durationStr})</li>`;
+          } else {
+            noticeHtml += `<li style="color: #dc3545; font-weight: bold;">${startStr} – Present (Active Unmonitored Session)</li>`;
+          }
+        });
+        noticeHtml += `</ul></div>`;
+      }
+    });
+
+    if (ignoredWarnings.length > 0) {
+      hasAuditNotice = true;
+      noticeHtml += `<div><strong>🛑 Restricted Sites Visited (${ignoredWarnings.length} Ignored Warnings):</strong><ul style="margin: 4px 0 0 0; padding-left: 20px; font-size: 13px;">`;
+      ignoredWarnings.forEach(w => {
+        noticeHtml += `<li style="margin-bottom: 6px;">
+          <strong>${new Date(w.t || w.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</strong> — 
+          <em>"${w.title ? w.title.replace("[VISITED]", "").trim() : "Untitled"}"</em><br>
+          <a href="${w.url}" style="color: #842029; word-break: break-all; font-size: 11px;">${w.url}</a>
+        </li>`;
+      });
+      noticeHtml += `</ul></div>`;
+    }
+
+    let warningsHtml = "";
+    if (hasAuditNotice) {
+      warningsHtml = `
+        <div style="background-color: #fff3cd; border: 1px solid #ffe69c; border-radius: 8px; padding: 15px; margin-bottom: 20px; color: #664d03;">
+          <h3 style="margin: 0 0 10px 0; color: #664d03; font-size: 15px;">⚠️ ATTENTION REQUIRED</h3>
+          ${noticeHtml}
+        </div>
+      `;
+    }
 
     const userName = profileData.userName || "User";
     const partnerName = profileData.partnerName || "Partner";
     const dashboardUrl = `https://tbehman.github.io/virtue-extension/?fileId=${profileData.driveFileId}#key=${keyHex}`;
 
     let subject = `Virtue Report for ${userName}: All Clear`;
-    if (ignoredWarnings.length > 0 || hasIncognitoGaps) subject = `Virtue Report for ${userName}: Activity Needs Review`;
+    if (hasAuditNotice) subject = `Virtue Report for ${userName}: Activity Needs Review`;
     if (isHandoff) subject = `Virtue Report for ${userName}: Closing Summary`;
     if (isWelcome) subject = `Welcome! You are now an Accountability Partner for ${userName}`;
 
@@ -593,25 +666,6 @@ async function dispatchReportSnapshot(profileData, options = {}) {
           <p style="margin: 0; font-size: 13px; color: #146c43; line-height: 1.5;">
             Below is a summary of current activity, along with direct access to the live web dashboard.
           </p>
-        </div>
-      `;
-    }
-
-    let warningsHtml = "";
-    if (ignoredWarnings.length > 0) {
-      const warningCountText = ignoredWarnings.length === 1 ? "1 Restricted Site Visited" : `${ignoredWarnings.length} Restricted Sites Visited`;
-      warningsHtml = `
-        <div style="background-color: #fff3cd; border: 1px solid #ffe69c; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-          <h3 style="margin: 0 0 10px 0; color: #664d03; font-size: 15px;">Attention: ${warningCountText}</h3>
-          <ul style="margin: 0; padding-left: 20px; color: #664d03; font-size: 13px;">
-            ${ignoredWarnings.map(w => `
-              <li style="margin-bottom: 6px;">
-                <strong>${new Date(w.t || w.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</strong> - 
-                <em>"${w.title ? w.title.replace("[VISITED]", "").trim() : "Untitled"}"</em><br>
-                <a href="${w.url}" style="color: #664d03; word-break: break-all;">${w.url}</a>
-              </li>
-            `).join('')}
-          </ul>
         </div>
       `;
     }
@@ -751,11 +805,9 @@ function flushBufferToDriveJson() {
     } catch (err) {
       console.error("❌ [SYNC ENGINE CRITICAL FAILURE]:", err);
       
-      // If 404 or 403, the old log was removed/trashed/changed!
       if (err.message && (err.message.includes("404") || err.message.includes("403"))) {
         console.warn("⚠️ [SYNC ENGINE] Drive file unreachable/deleted. Notifying partner with new link & buffer, wiping ID, and creating fresh root file...");
         
-        // 1. Wipe stale ID and provision a brand new root file immediately
         await chrome.storage.local.remove(["driveFileId"]);
 
         try {
@@ -764,10 +816,8 @@ function flushBufferToDriveJson() {
               try {
                 const newFileId = await createBrandNewRootDriveFile(token);
                 
-                // 2. Notify partner about the removed/changed log, include buffer items and the NEW dashboard link
                 await notifyPartnerLogReset(newFileId, buffer);
 
-                // Immediately sync current buffer to the new file
                 await performDriveUploadCycle(newFileId, buffer);
                 resolve();
               } catch (e) { reject(e); }
