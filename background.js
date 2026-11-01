@@ -408,6 +408,31 @@ function setupAlarms() {
       chrome.alarms.create("checkWeeklyReport", { periodInMinutes: 60 });
     }
   });
+
+  chrome.alarms.get("incognitoHeartbeat", (alarm) => {
+    if (!alarm || (alarm.scheduledTime && alarm.scheduledTime < Date.now())) {
+      chrome.alarms.create("incognitoHeartbeat", { periodInMinutes: 15 });
+    }
+  });
+}
+
+function recordIncognitoHeartbeat() {
+  if (isNonChromeChromium) return;
+  try {
+    chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
+      // --- ADD THIS DEBUG LINE ---
+      console.log("🔍 [DEBUG HEARTBEAT] Incognito access allowed:", isAllowed, "Device:", getDeviceInfo());
+      
+      addToBuffer({
+        t: Date.now(),
+        type: "HEARTBEAT",
+        incognitoAllowed: Boolean(isAllowed),
+        device: getDeviceInfo()
+      });
+    });
+  } catch (e) {
+    console.error("Heartbeat error:", e);
+  }
 }
 
 if (!isNonChromeChromium) {
@@ -435,6 +460,7 @@ if (!isNonChromeChromium) {
     updateDynamicSafeSearchRules();
     reconcilePartnerPermissions();
     checkAndSendWeeklyReport();
+    recordIncognitoHeartbeat();
   });
 
   setupAlarms();
@@ -490,6 +516,8 @@ if (!isNonChromeChromium) {
       flushBufferToDriveJson();
     } else if (alarm.name === "checkWeeklyReport") {
       checkAndSendWeeklyReport();
+    } else if (alarm.name === "incognitoHeartbeat") {
+      recordIncognitoHeartbeat();
     }
   });
 }
@@ -584,12 +612,12 @@ async function dispatchReportSnapshot(profileData, options = {}) {
     });
 
     Object.entries(devices).forEach(([devName, beats]) => {
-      beats.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      beats.sort((a, b) => new Date(a.timestamp || a.t) - new Date(b.timestamp || b.t));
       const unmonitoredWindows = [];
       let currentWindowStart = null;
 
       beats.forEach((hb, idx) => {
-        const hbTime = new Date(hb.timestamp);
+        const hbTime = new Date(hb.timestamp || hb.t);
         if (!hb.incognitoAllowed) {
           if (!currentWindowStart) currentWindowStart = hbTime;
           if (idx === beats.length - 1) {
