@@ -346,6 +346,40 @@ async function authenticatedFetch(url, options = {}) {
 }
 
 // ==========================================
+// 1.5 COMMERCIAL-GRADE FETCH WITH BACKOFF & JITTER
+// ==========================================
+async function fetchWithBackoff(url, options = {}, maxRetries = 3) {
+  let delay = 1000; // Initial delay of 1 second
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await authenticatedFetch(url, options);
+      
+      // Treat server-side transient drops (5xx) and rate limits (429) as retryable
+      if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
+        throw new Error(`Transient server status: ${response.status}`);
+      }
+      
+      return response; // Success or permanent client error (4xx)
+    } catch (err) {
+      if (attempt === maxRetries) {
+        console.warn(`[SYNC ENGINE] Transient retry limit reached for ${url}. Preserving local buffer.`);
+        throw err;
+      }
+      
+      // Add jitter to prevent simultaneous retry spikes across multiple browser profiles
+      const jitter = Math.random() * 300;
+      const computedDelay = delay + jitter;
+      
+      console.warn(`[SYNC RETRY] Network blip or transient error. Retrying in ${Math.round(computedDelay)}ms... (Attempt ${attempt}/${maxRetries})`);
+      
+      await new Promise(resolve => setTimeout(resolve, computedDelay));
+      delay *= 2; // Double the wait time for the next attempt (1s -> 2s -> 4s)
+    }
+  }
+}
+
+// ==========================================
 // 1.1 GMAIL API DISPATCHER
 // ==========================================
 async function sendGmailNotification({ toEmail, subject, bodyHtml, bodyText }) {
@@ -420,7 +454,6 @@ function recordIncognitoHeartbeat() {
   if (isNonChromeChromium) return;
   try {
     chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
-      // --- ADD THIS DEBUG LINE ---
       console.log("🔍 [DEBUG HEARTBEAT] Incognito access allowed:", isAllowed, "Device:", getDeviceInfo());
       
       addToBuffer({
@@ -598,9 +631,6 @@ async function dispatchReportSnapshot(profileData, options = {}) {
 
     const ignoredWarnings = currentWeekLogs.filter(l => l.flag === 1 || (l.title && l.title.includes("[VISITED]")) || (l.url && l.url.includes("virtue_bypass=true")));
     
-    // ==========================================
-    // UNIFIED INCOGNITO WINDOW & WARNING BUILDER
-    // ==========================================
     let noticeHtml = "";
     let hasAuditNotice = false;
 
@@ -902,7 +932,7 @@ async function notifyPartnerLogReset(newFileId, buffer) {
 }
 
 async function createBrandNewRootDriveFile(token) {
-  const createRes = await fetch("https://www.googleapis.com/drive/v3/files", {
+  const createRes = await fetchWithBackoff("https://www.googleapis.com/drive/v3/files", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -943,7 +973,7 @@ async function createBrandNewRootDriveFile(token) {
     encryptedData: ""
   };
 
-  await fetch(`https://www.googleapis.com/upload/drive/v3/files/${newFileId}?uploadType=media`, {
+  await fetchWithBackoff(`https://www.googleapis.com/upload/drive/v3/files/${newFileId}?uploadType=media`, {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -977,7 +1007,7 @@ async function createBrandNewRootDriveFile(token) {
 async function performDriveUploadCycle(fileId, newLogs) {
   console.log(`🌐 [UPLOAD CYCLE] Fetching remote file content for ID: ${fileId}...`);
   
-  const res = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+  const res = await fetchWithBackoff(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { "Cache-Control": "no-cache" }
   });
 
@@ -1041,7 +1071,7 @@ async function performDriveUploadCycle(fileId, newLogs) {
   if (etag) uploadHeaders["If-Match"] = etag;
 
   console.log(`🚀 [UPLOAD CYCLE] Sending PATCH request to Drive...`);
-  const uploadRes = await authenticatedFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+  const uploadRes = await fetchWithBackoff(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
     method: "PATCH",
     headers: uploadHeaders,
     body: JSON.stringify(updatedPayload)
@@ -1339,3 +1369,4 @@ globalThis.checkAndSendWeeklyReport = checkAndSendWeeklyReport;
 globalThis.flushBufferToDriveJson = flushBufferToDriveJson;
 globalThis.reconcilePartnerPermissions = reconcilePartnerPermissions;
 globalThis.createBrandNewRootDriveFile = createBrandNewRootDriveFile;
+globalThis.fetchWithBackoff = fetchWithBackoff;
