@@ -8,12 +8,15 @@ if (isNonChromeChromium) {
 }
 
 // ==========================================
-// VIRTUE CONFIGURATION (CENTRALIZED - ROOT ONLY)
+// VIRTUE CONFIGURATION & CONSTANTS
 // ==========================================
 const VIRTUE_CONFIG = {
   FILE_NAME: "virtue_logs_v1.json",
   MIME_FILE: "application/json"
 };
+
+const FILTER_MODE_STANDARD = "standard";
+const FILTER_MODE_STRICT = "strict";
 
 const SAFESEARCH_RULE_IDS = [101, 102, 103];
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -272,7 +275,7 @@ function calculatePeakBrowsingHours(logs) {
 }
 
 // ==========================================
-// 1. CHROME NATIVE AUTHENTICATION ENGINE
+// 1. CHROME NATIVE AUTHENTICATION & FETCH
 // ==========================================
 function notifyActiveTabOfAuthFailure() {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -345,48 +348,31 @@ async function authenticatedFetch(url, options = {}) {
   });
 }
 
-// ==========================================
-// 1.5 COMMERCIAL-GRADE FETCH WITH BACKOFF & JITTER
-// ==========================================
 async function fetchWithBackoff(url, options = {}, maxRetries = 3) {
-  let delay = 1000; // Initial delay of 1 second
+  let delay = 1000;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const response = await authenticatedFetch(url, options);
-      
-      // Treat server-side transient drops (5xx) and rate limits (429) as retryable
       if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
         throw new Error(`Transient server status: ${response.status}`);
       }
-      
-      return response; // Success or permanent client error (4xx)
+      return response;
     } catch (err) {
       if (attempt === maxRetries) {
         console.warn(`[SYNC ENGINE] Transient retry limit reached for ${url}. Preserving local buffer.`);
         throw err;
       }
-      
-      // Add jitter to prevent simultaneous retry spikes across multiple browser profiles
       const jitter = Math.random() * 300;
       const computedDelay = delay + jitter;
-      
-      console.warn(`[SYNC RETRY] Network blip or transient error. Retrying in ${Math.round(computedDelay)}ms... (Attempt ${attempt}/${maxRetries})`);
-      
       await new Promise(resolve => setTimeout(resolve, computedDelay));
-      delay *= 2; // Double the wait time for the next attempt (1s -> 2s -> 4s)
+      delay *= 2;
     }
   }
 }
 
-// ==========================================
-// 1.1 GMAIL API DISPATCHER
-// ==========================================
 async function sendGmailNotification({ toEmail, subject, bodyHtml, bodyText }) {
-  if (!toEmail) {
-    console.error("Virtue Email Error: No recipient email provided.");
-    return false;
-  }
+  if (!toEmail) return false;
 
   const encodedSubject = `=?UTF-8?B?${btoa(encodeURIComponent(subject).replace(/%([0-9A-F]{2})/g, (m, p1) => String.fromCharCode('0x' + p1)))}?=`;
   const isHtml = Boolean(bodyHtml);
@@ -411,15 +397,7 @@ async function sendGmailNotification({ toEmail, subject, bodyHtml, bodyText }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ raw: encodedMessage })
     });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`Virtue Email Error [Status ${res.status}]:`, errText);
-      return false;
-    }
-
-    console.log("Virtue Email Success: Dispatched to", toEmail);
-    return true;
+    return res.ok;
   } catch (err) {
     console.error("Virtue Email Fetch Exception:", err);
     return false;
@@ -427,7 +405,7 @@ async function sendGmailNotification({ toEmail, subject, bodyHtml, bodyText }) {
 }
 
 // ==========================================
-// 2. INITIALIZE ALARMS & RULES (SELF-HEALING)
+// 2. INITIALIZE ALARMS & STORAGE DEFAULTS
 // ==========================================
 function setupAlarms() {
   if (isNonChromeChromium) return;
@@ -454,8 +432,6 @@ function recordIncognitoHeartbeat() {
   if (isNonChromeChromium) return;
   try {
     chrome.extension.isAllowedIncognitoAccess((isAllowed) => {
-      console.log("🔍 [DEBUG HEARTBEAT] Incognito access allowed:", isAllowed, "Device:", getDeviceInfo());
-      
       addToBuffer({
         t: Date.now(),
         type: "HEARTBEAT",
@@ -472,11 +448,11 @@ if (!isNonChromeChromium) {
   chrome.runtime.onInstalled.addListener(() => {
     setupAlarms();
 
-    chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist", "userPin", "nextWeeklyReportDueAt"], (result) => {
+    chrome.storage.local.get(["filterMode", "customBlocklist", "customApprovedList", "userPin", "nextWeeklyReportDueAt"], (result) => {
       const updates = {};
-      if (!result.filterMode) updates.filterMode = "blocklist";
-      if (!result.customBlacklist) updates.customBlacklist = ["facebook.com", "instagram.com"];
-      if (!result.customWhitelist) updates.customWhitelist = ["wikipedia.org", "google.com"];
+      if (!result.filterMode) updates.filterMode = FILTER_MODE_STANDARD;
+      if (!result.customBlocklist) updates.customBlocklist = ["facebook.com", "instagram.com"];
+      if (!result.customApprovedList) updates.customApprovedList = ["wikipedia.org", "google.com"];
       if (!result.userPin) updates.userPin = "1234";
       if (!result.nextWeeklyReportDueAt) updates.nextWeeklyReportDueAt = getNextMonday9AM();
 
@@ -530,10 +506,7 @@ function addToBuffer(data) {
   chrome.storage.local.get({ logBuffer: [] }, (result) => {
     const buffer = result.logBuffer;
     buffer.push(data);
-    console.log(`📥 [BUFFER ADD] Added item type: "${data.type}". New buffer length: ${buffer.length}/10`);
-    
     if (buffer.length >= 10) {
-      console.log(`🚀 [BUFFER TRIGGER] Threshold of 10 items reached! Flushing buffer to Drive...`);
       chrome.storage.local.set({ logBuffer: buffer }, () => {
         flushBufferToDriveJson();
       });
@@ -567,8 +540,6 @@ async function checkAndSendWeeklyReport() {
     const nextDue = data.nextWeeklyReportDueAt || getNextMonday9AM();
 
     if (now >= nextDue) {
-      console.log("⏰ Scheduled target reached. Dispatching Weekly Accountability Report...");
-      
       const success = await dispatchReportSnapshot(data, { isHandoff: false });
       if (success) {
         const newNextDue = getNextMonday9AM();
@@ -703,7 +674,6 @@ async function dispatchReportSnapshot(profileData, options = {}) {
     }
 
     const userName = profileData.userName || "User";
-    const partnerName = profileData.partnerName || "Partner";
     const dashboardUrl = `https://tbehman.github.io/virtue-extension/?fileId=${profileData.driveFileId}#key=${keyHex}`;
 
     let subject = `Virtue Report for ${userName}: All Clear`;
@@ -720,9 +690,6 @@ async function dispatchReportSnapshot(profileData, options = {}) {
           </p>
           <p style="margin: 0 0 8px 0; font-size: 13px; color: #146c43; line-height: 1.5;">
             ${userName} has selected you as a trusted accountability partner in the pursuit of digital integrity.
-          </p>
-          <p style="margin: 0; font-size: 13px; color: #146c43; line-height: 1.5;">
-            Below is a summary of current activity, along with direct access to the live web dashboard.
           </p>
         </div>
       `;
@@ -767,52 +734,36 @@ async function dispatchReportSnapshot(profileData, options = {}) {
       </div>
     `;
 
-    const introTextHtml = isWelcome ? "" : `<p style="font-size: 14px; color: #212529; margin-bottom: 20px;"></p>`;
-
     const bodyHtml = `
       <!DOCTYPE html>
       <html>
       <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8f9fa; margin: 0; padding: 20px;">
         <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e9ecef; overflow: hidden; padding: 25px;">
-          <div style="display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #198754; padding-bottom: 15px; margin-bottom: 20px;">
-            <div style="background-color: #ffffff; padding: 6px; border-radius: 8px; display: inline-block; border: 1px solid #e9ecef;">
-              <img src="https://raw.githubusercontent.com/tbehman/virtue-extension/main/docs/virtue_logo.png" alt="Virtue Logo" style="height: 44px; width: auto; display: block;">
-            </div>
-            <h2 style="margin: 0; color: #198754; font-size: 22px;">Virtue Accountability Report</h2>
-          </div>
-          
-          ${introTextHtml}
+          <h2 style="color: #198754; font-size: 22px;">Virtue Accountability Report</h2>
           ${welcomeHeaderHtml}
           ${warningsHtml}
-          
           <table style="width: 100%; border-collapse: separate; border-spacing: 10px; margin-bottom: 25px;">
             <tr>
-              <td style="width: 33%; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 14px; text-align: center; vertical-align: top;">
-                <div style="font-size: 10px; color: #6c757d; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Sites Visited</div>
+              <td style="width: 33%; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 14px; text-align: center;">
+                <div style="font-size: 10px; color: #6c757d; font-weight: 700; text-transform: uppercase;">Sites Visited</div>
                 <div style="font-size: 22px; font-weight: 800; color: #212529; margin-top: 4px;">${currentSitesCount}</div>
                 ${trendHtml}
               </td>
-              <td style="width: 33%; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 14px; text-align: center; vertical-align: top;">
-                <div style="font-size: 10px; color: #6c757d; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Peak Browsing Hours</div>
-                <div style="font-size: 15px; font-weight: 800; color: #212529; margin-top: 8px;">${peakHoursStr}</div>
+              <td style="width: 33%; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 14px; text-align: center;">
+                <div style="font-size: 10px; color: #6c757d; font-weight: 700; text-transform: uppercase;">Peak Hours</div>
+                <div style="font-size: 14px; font-weight: 800; color: #212529; margin-top: 8px;">${peakHoursStr}</div>
               </td>
-              <td style="width: 33%; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 14px; text-align: center; vertical-align: top;">
-                <div style="font-size: 10px; color: #6c757d; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Web Searches</div>
+              <td style="width: 33%; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 14px; text-align: center;">
+                <div style="font-size: 10px; color: #6c757d; font-weight: 700; text-transform: uppercase;">Searches</div>
                 <div style="font-size: 22px; font-weight: 800; color: #198754; margin-top: 4px;">${validSearches.length}</div>
               </td>
             </tr>
           </table>
-
           <h3 style="font-size: 15px; color: #212529; margin-bottom: 10px;">Top Visited Domains</h3>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
-            ${domainRowsHtml}
-          </table>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">${domainRowsHtml}</table>
           <h3 style="font-size: 15px; color: #212529; margin-bottom: 10px;">Recent Web Searches</h3>
-          <ul style="padding-left: 20px; margin-bottom: 25px;">
-            ${searchRowsHtml}
-          </ul>
+          <ul style="padding-left: 20px; margin-bottom: 25px;">${searchRowsHtml}</ul>
           ${footerLinkHtml}
-          <p style="font-size: 12px; color: #6c757d; text-align: center; margin-top: 25px;">Blessings,<br><strong>Virtue Accountability Team</strong></p>
         </div>
       </body>
       </html>
@@ -826,56 +777,36 @@ async function dispatchReportSnapshot(profileData, options = {}) {
 }
 
 // ==========================================
-// 3. ID-ANCHORED ROOT SYNC ENGINE (WITH SINGLE-EMAIL NOTIFICATION ON RESET)
+// 3. ID-ANCHORED ROOT SYNC ENGINE
 // ==========================================
 function flushBufferToDriveJson() {
   if (isNonChromeChromium) return;
-  console.log("🟢 [SYNC ENGINE] Triggered flushBufferToDriveJson()");
-
   chrome.storage.local.get({ logBuffer: [], driveFileId: "" }, async (res) => {
     const buffer = res.logBuffer;
-    console.log(`📋 [SYNC ENGINE] Buffer items to sync: ${buffer.length}`);
-
-    if (buffer.length === 0) {
-      console.log("ℹ️ [SYNC ENGINE] Buffer is empty. Aborting sync.");
-      return;
-    }
+    if (buffer.length === 0) return;
 
     let fileId = res.driveFileId;
-
     try {
       if (!fileId) {
-        console.log("🏗️ [SYNC ENGINE] No cached driveFileId. Provisioning a brand-new root log file...");
         await new Promise((resolve, reject) => {
           fetchNewToken(false, async (token) => {
             try {
               fileId = await createBrandNewRootDriveFile(token);
               resolve();
-            } catch (err) {
-              reject(err);
-            }
+            } catch (err) { reject(err); }
           }, reject);
         });
       }
-
       await performDriveUploadCycle(fileId, buffer);
-
     } catch (err) {
-      console.error("❌ [SYNC ENGINE CRITICAL FAILURE]:", err);
-      
       if (err.message && (err.message.includes("404") || err.message.includes("403"))) {
-        console.warn("⚠️ [SYNC ENGINE] Drive file unreachable/deleted. Notifying partner with new link & buffer, wiping ID, and creating fresh root file...");
-        
         await chrome.storage.local.remove(["driveFileId"]);
-
         try {
           await new Promise((resolve, reject) => {
             fetchNewToken(false, async (token) => {
               try {
                 const newFileId = await createBrandNewRootDriveFile(token);
-                
                 await notifyPartnerLogReset(newFileId, buffer);
-
                 await performDriveUploadCycle(newFileId, buffer);
                 resolve();
               } catch (e) { reject(e); }
@@ -898,14 +829,6 @@ async function notifyPartnerLogReset(newFileId, buffer) {
   const userName = profile.userName || "User";
   const subject = `Notice & New Link: Virtue Tracking Vault Reset for ${userName}`;
 
-  const bufferSummaryHtml = buffer.length > 0 ? `
-    <div style="background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-      <h4 style="margin: 0 0 10px 0; color: #212529; font-size: 14px;">Recent Activity at Time of Reset (${buffer.length} items):</h4>
-      <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #495057;">
-		${buffer.slice(-5).map(b => `<li><strong>${new Date(b.t || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</strong> - ${b.title || b.url || b.type}</li>`).join('')} </ul>
-    </div>
-  ` : `<p style="font-size: 13px; color: #6c757d;">No pending buffer items at the time of reset.</p>`;
-
   const bodyHtml = `
     <!DOCTYPE html>
     <html>
@@ -913,46 +836,33 @@ async function notifyPartnerLogReset(newFileId, buffer) {
       <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e9ecef; overflow: hidden; padding: 25px;">
         <h2 style="color: #d97706; font-size: 20px; margin-top: 0;">Virtue Vault Reset Notice</h2>
         <p style="font-size: 14px; color: #212529; line-height: 1.5;">
-          Hello ${profile.partnerName || "Partner"},
+          Hello ${profile.partnerName || "Partner"}, a brand new tracking vault has been automatically provisioned for <strong>${userName}</strong>.
         </p>
-        <p style="font-size: 14px; color: #212529; line-height: 1.5;">
-          This is an automated notification that the previous tracking log for <strong>${userName}</strong> was removed, moved, or modified on Google Drive. A brand new tracking vault has been automatically provisioned.
-        </p>
-        ${bufferSummaryHtml}
         <div style="text-align: center; border-top: 1px solid #e9ecef; padding-top: 20px; margin-top: 20px;">
           <a href="${dashboardUrl}" target="_blank" style="background-color: #198754; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">View New Live Web Dashboard ➔</a>
         </div>
-        <p style="font-size: 12px; color: #6c757d; text-align: center; margin-top: 25px;"><strong>Virtue Accountability Team</strong></p>
       </div>
     </body>
     </html>
   `;
-
   await sendGmailNotification({ toEmail: profile.partnerEmail, subject, bodyHtml });
 }
 
 async function createBrandNewRootDriveFile(token) {
   const createRes = await fetchWithBackoff("https://www.googleapis.com/drive/v3/files", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      name: VIRTUE_CONFIG.FILE_NAME,
-      mimeType: VIRTUE_CONFIG.MIME_FILE
-    })
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: VIRTUE_CONFIG.FILE_NAME, mimeType: VIRTUE_CONFIG.MIME_FILE })
   });
 
   if (!createRes.ok) throw new Error(`Vault file creation failed with status ${createRes.status}`);
   const fileJson = await createRes.json();
   const newFileId = fileJson.id;
-
   await chrome.storage.local.set({ driveFileId: newFileId });
 
   const profile = await new Promise(r => chrome.storage.local.get([
     "userName", "partnerName", "partnerEmail", "userEmail", 
-    "customBlacklist", "customWhitelist", "customKeywords", "filterMode"
+    "customBlocklist", "customApprovedList", "customKeywords", "filterMode"
   ], r));
 
   const initialPayload = {
@@ -962,10 +872,10 @@ async function createBrandNewRootDriveFile(token) {
       partnerName: profile.partnerName || "",
       partnerEmail: profile.partnerEmail || "",
       userEmail: profile.userEmail || "",
-      customBlacklist: profile.customBlacklist || [],
-      customWhitelist: profile.customWhitelist || [],
+      customBlocklist: profile.customBlocklist || [],
+      customApprovedList: profile.customApprovedList || [],
       customKeywords: profile.customKeywords || [],
-      filterMode: profile.filterMode || "blocklist",
+      filterMode: profile.filterMode || FILTER_MODE_STANDARD,
       settingsLastUpdated: Date.now(),
       lastUpdated: new Date().toISOString()
     },
@@ -975,10 +885,7 @@ async function createBrandNewRootDriveFile(token) {
 
   await fetchWithBackoff(`https://www.googleapis.com/upload/drive/v3/files/${newFileId}?uploadType=media`, {
     method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(initialPayload)
   });
 
@@ -991,29 +898,20 @@ async function createBrandNewRootDriveFile(token) {
         body: JSON.stringify({ role: "reader", type: "user", emailAddress: profile.partnerEmail })
       }
     );
-
     await dispatchReportSnapshot({
-      userName: profile.userName,
-      partnerName: profile.partnerName,
-      partnerEmail: profile.partnerEmail,
-      driveFileId: newFileId
+      userName: profile.userName, partnerName: profile.partnerName, partnerEmail: profile.partnerEmail, driveFileId: newFileId
     }, { isWelcome: true, targetEmail: profile.partnerEmail });
   }
 
-  console.log(`✨ [ROOT ID-ANCHOR] Created brand new root log file ID: ${newFileId}`);
   return newFileId;
 }
 
 async function performDriveUploadCycle(fileId, newLogs) {
-  console.log(`🌐 [UPLOAD CYCLE] Fetching remote file content for ID: ${fileId}...`);
-  
   const res = await fetchWithBackoff(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { "Cache-Control": "no-cache" }
   });
 
-  if (!res.ok) {
-    throw new Error(`Drive fetch failed with status ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`Drive fetch failed with status ${res.status}`);
 
   const etag = res.headers.get("ETag");
   let fileData = { metadata: { version: "1.0" } };
@@ -1024,22 +922,18 @@ async function performDriveUploadCycle(fileId, newLogs) {
     fileData = await res.json();
     if (fileData.encryptedData && fileData.iv) {
       existingLogs = await decryptData(fileData.encryptedData, fileData.iv, key);
-      console.log(`🔓 [UPLOAD CYCLE] Decrypted ${existingLogs.length} existing logs from Drive.`);
     }
-  } catch (e) {
-    console.warn("⚠️ [UPLOAD CYCLE] File body empty or unparsable. Treating as fresh vault.");
-  }
+  } catch (e) {}
 
   const localProfile = await new Promise(r => chrome.storage.local.get([
     "userName", "partnerName", "partnerEmail", "userEmail", 
-    "customBlacklist", "customWhitelist", "customKeywords", "filterMode", "settingsLastUpdated"
+    "customBlocklist", "customApprovedList", "customKeywords", "filterMode", "settingsLastUpdated"
   ], r));
 
   const logMap = new Map();
   [...existingLogs, ...newLogs].forEach(log => {
     const timestamp = log.t || log.timestamp;
-    const uniqueKey = `${timestamp}_${log.url || log.type || ''}`;
-    logMap.set(uniqueKey, log);
+    logMap.set(`${timestamp}_${log.url || log.type || ''}`, log);
   });
   const combined = Array.from(logMap.values());
   const cutoffTime = Date.now() - SEVEN_DAYS_MS;
@@ -1048,9 +942,7 @@ async function performDriveUploadCycle(fileId, newLogs) {
     return !isNaN(logTime) && logTime > cutoffTime;
   });
 
-  console.log(`📦 [UPLOAD CYCLE] Encrypting ${rollingLogs.length} rolling logs...`);
   const encrypted = await encryptData(rollingLogs, key);
-
   const driveMeta = fileData.metadata || {};
   const updatedPayload = {
     metadata: {
@@ -1070,7 +962,6 @@ async function performDriveUploadCycle(fileId, newLogs) {
   const uploadHeaders = { "Content-Type": "application/json" };
   if (etag) uploadHeaders["If-Match"] = etag;
 
-  console.log(`🚀 [UPLOAD CYCLE] Sending PATCH request to Drive...`);
   const uploadRes = await fetchWithBackoff(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
     method: "PATCH",
     headers: uploadHeaders,
@@ -1082,12 +973,11 @@ async function performDriveUploadCycle(fileId, newLogs) {
     throw new Error(`Drive PATCH failed [Status ${uploadRes.status}]: ${errText}`);
   }
 
-  console.log("✅ [UPLOAD CYCLE SUCCESS] Buffer synced to Drive and cleared locally.");
   await chrome.storage.local.set({ logBuffer: [], syncFailCount: 0 });
 }
 
 // ==========================================
-// 4. HIGH-PERFORMANCE INTERCEPTION ENGINE
+// 4. HIGH-PERFORMANCE INTERCEPTION ENGINE (ABSOLUTE PRECEDENCE RULES)
 // ==========================================
 if (!isNonChromeChromium) {
   chrome.webNavigation.onBeforeNavigate.addListener((details) => {
@@ -1096,7 +986,12 @@ if (!isNonChromeChromium) {
     if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) return;
     if (urlStr.includes("virtue_bypass=true")) return;
 
-    chrome.storage.local.get({ filterMode: "blocklist", customBlacklist: [], customWhitelist: [], customKeywords: [] }, (settings) => {
+    chrome.storage.local.get({ 
+      filterMode: FILTER_MODE_STANDARD, 
+      customBlocklist: [], 
+      customApprovedList: [], 
+      customKeywords: [] 
+    }, (settings) => {
       try {
         const url = new URL(urlStr);
         const hostname = url.hostname.toLowerCase().trim();
@@ -1113,10 +1008,20 @@ if (!isNonChromeChromium) {
           });
         };
 
-        if (settings.filterMode === "whitelist") {
-          shouldBlock = !matchesCustomList(settings.customWhitelist);
+        const currentMode = settings.filterMode || FILTER_MODE_STANDARD;
+        const isStrict = currentMode === FILTER_MODE_STRICT;
+        const approvedList = settings.customApprovedList || [];
+
+        // 1. ABSOLUTE PRECEDENCE: Check Approved List first (Approved list always wins!)
+        const isApproved = matchesCustomList(approvedList);
+
+        if (isApproved) {
+          shouldBlock = false; // Bypass all blocking immediately
+        } else if (isStrict) {
+          shouldBlock = true;  // Strict mode: block everything not explicitly approved
         } else {
-          const inCustomBlacklist = matchesCustomList(settings.customBlacklist);
+          // Standard Mode evaluation
+          const inCustomBlocklist = matchesCustomList(settings.customBlocklist || []);
 
           let inStaticShield = false;
           const parts = hostname.split('.');
@@ -1128,7 +1033,7 @@ if (!isNonChromeChromium) {
             }
           }
 
-          shouldBlock = inCustomBlacklist || inStaticShield || isYahooMediaLeak;
+          shouldBlock = inCustomBlocklist || inStaticShield || isYahooMediaLeak;
 
           if (!shouldBlock) {
             const cleanUrlStr = sanitizeStringForTesting(urlStr).toLowerCase();
@@ -1163,7 +1068,7 @@ if (!isNonChromeChromium) {
 }
 
 // ==========================================
-// 5. GENERAL NAVIGATION LOGGING (LEAN SCHEMA V1)
+// 5. GENERAL NAVIGATION LOGGING
 // ==========================================
 function processNavigation(url, tabId) {
   if (isNonChromeChromium) return;
@@ -1222,7 +1127,7 @@ if (!isNonChromeChromium) {
 }
 
 // ==========================================
-// 6. MESSAGE LISTENERS FOR POPUP & RE-AUTH ACTIONS
+// 6. MESSAGE LISTENERS
 // ==========================================
 if (!isNonChromeChromium) {
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -1233,7 +1138,6 @@ if (!isNonChromeChromium) {
 
       (async () => {
         const deviceId = await getDeviceId();
-
         await chrome.storage.local.set({
           ...newProfile,
           oldPartnerEmail: oldEmail,
@@ -1241,7 +1145,6 @@ if (!isNonChromeChromium) {
           syncRetryCount: 0,
           lastInitiatorDeviceId: deviceId
         });
-
         reconcilePartnerPermissions();
       })();
 
@@ -1253,9 +1156,7 @@ if (!isNonChromeChromium) {
       fetchNewToken(true, (token) => {
         clearAuthFailureBanner();
         flushBufferToDriveJson();
-      }, (err) => {
-        console.error("Interactive auth failed:", err);
-      });
+      }, (err) => { console.error("Interactive auth failed:", err); });
       return true;
     }
 
@@ -1265,7 +1166,6 @@ if (!isNonChromeChromium) {
           sendResponse({ success: false, error: "Missing partner configuration" });
           return;
         }
-
         const success = await dispatchReportSnapshot(profile, { isHandoff: false });
         sendResponse({ success });
       });
@@ -1275,36 +1175,24 @@ if (!isNonChromeChromium) {
     if (request.type === "RECOVER_USER_PIN") {
       chrome.storage.local.get(["userPin", "userName", "userEmail"], (data) => {
         const targetEmail = data.userEmail;
-
         if (!targetEmail) {
-          console.error("Virtue PIN Recovery Error: Profile email not available");
           sendResponse({ success: false, error: "No user email found" });
           return;
         }
-
         const userPin = data.userPin || "1234";
         const userName = data.userName || "Friend";
-
         const subject = "Your Virtue PIN Recovery";
         const bodyHtml = `
           <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 500px; border: 1px solid #e2e8f0; border-radius: 8px;">
             <h2 style="color: #198754; margin-top: 0;">Virtue Security Recovery</h2>
             <p>Hello ${userName},</p>
-            <p>You requested recovery for your 4-digit Virtue security PIN.</p>
+            <p>You requested recovery for your 4-digit Virtue security PIN:</p>
             <div style="background-color: #f1f5f9; padding: 15px; font-size: 28px; font-weight: bold; letter-spacing: 6px; text-align: center; border-radius: 8px; color: #0f172a; margin: 20px 0;">
               ${userPin}
             </div>
-            <p style="color: #64748b; font-size: 12px; margin-top: 20px;">
-              If you did not request this PIN recovery, please check your Virtue extension settings.
-            </p>
           </div>
         `;
-
-        sendGmailNotification({
-          toEmail: targetEmail,
-          subject: subject,
-          bodyHtml: bodyHtml
-        }).then(success => sendResponse({ success }));
+        sendGmailNotification({ toEmail: targetEmail, subject, bodyHtml }).then(success => sendResponse({ success }));
       });
       return true;
     }
@@ -1315,14 +1203,9 @@ if (!isNonChromeChromium) {
           sendResponse({ success: false });
           return;
         }
-
         if (request.oldEmail) {
-          await dispatchReportSnapshot(profile, { 
-            isHandoff: true, 
-            targetEmail: request.oldEmail 
-          });
+          await dispatchReportSnapshot(profile, { isHandoff: true, targetEmail: request.oldEmail });
         }
-
         reconcilePartnerPermissions();
         sendResponse({ success: true });
       });
@@ -1331,12 +1214,10 @@ if (!isNonChromeChromium) {
 
     if (request.type === "SWITCH_GOOGLE_ACCOUNT") {
       flushBufferToDriveJson();
-
       chrome.storage.local.get(["userName", "partnerName", "partnerEmail", "driveFileId", "authToken"], async (profile) => {
         if (profile.partnerEmail && profile.driveFileId) {
           await dispatchReportSnapshot(profile, { isHandoff: true, targetEmail: profile.partnerEmail });
         }
-
         const token = profile.authToken;
         if (token) {
           fetch(`https://accounts.google.com/o/oauth2/revoke?token=${token}`)
@@ -1346,7 +1227,6 @@ if (!isNonChromeChromium) {
                   sendResponse({ success: true });
                 });
               };
-
               chrome.identity.removeCachedAuthToken({ token }, clearStorageAndRespond);
             });
         } else {

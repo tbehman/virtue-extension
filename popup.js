@@ -1,5 +1,9 @@
 import { deriveKeyFromPin } from './cryptoUtils.js';
 
+// Centralized constants for high cohesion and zero magic strings
+const FILTER_MODE_STANDARD = "standard";
+const FILTER_MODE_STRICT = "strict";
+
 document.addEventListener("DOMContentLoaded", () => {
   // Detect non-Chrome Chromium browsers (Edge, Brave, Opera, etc.)
   const isNonChromeChromium = /Edg|OPR|Brave/.test(navigator.userAgent) || !/Chrome/.test(navigator.userAgent);
@@ -313,48 +317,104 @@ function setupEventListeners() {
 }
 
 function loadDomainRules() {
+  const modeStandardRadio = document.querySelector('input[name="filterModeRadio"][value="standard"]');
+  const modeStrictRadio = document.querySelector('input[name="filterModeRadio"][value="strict"]');
   const modeBlocklistBtn = document.getElementById("modeBlocklistBtn");
-  const modeWhitelistBtn = document.getElementById("modeWhitelistBtn");
+  const modeApprovedListBtn = document.getElementById("modeApprovedListBtn");
   const addDomainBtn = document.getElementById("addDomainBtn");
   const domainInput = document.getElementById("domainInput");
 
-  if (!modeBlocklistBtn || !modeWhitelistBtn) return;
+  if (!modeStandardRadio || !modeBlocklistBtn) return;
 
-  chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist"], (data) => {
-    const filterMode = data.filterMode || "blocklist";
-    updateModeUI(filterMode);
-    renderDomainList(filterMode === "blocklist" ? (data.customBlacklist || []) : (data.customWhitelist || []));
+  // Track active list view tab ("blocklist" or "approved")
+  let activeListTab = "blocklist";
+
+  chrome.storage.local.get(["filterMode", "customBlocklist", "customApprovedList"], (data) => {
+    const currentMode = data.filterMode || FILTER_MODE_STANDARD;
+
+    if (modeStandardRadio && modeStrictRadio) {
+      modeStandardRadio.checked = (currentMode === FILTER_MODE_STANDARD);
+      modeStrictRadio.checked = (currentMode === FILTER_MODE_STRICT);
+    }
+
+    // Automatically default to Approved List if Strict mode is active
+    if (currentMode === FILTER_MODE_STRICT) {
+      activeListTab = "approved";
+      modeApprovedListBtn.classList.add("active");
+      modeBlocklistBtn.classList.remove("active");
+      updateListHeaders("approved");
+      renderDomainList(data.customApprovedList || [], "approved");
+    } else {
+      activeListTab = "blocklist";
+      modeBlocklistBtn.classList.add("active");
+      modeApprovedListBtn.classList.remove("active");
+      updateListHeaders("blocklist");
+      renderDomainList(data.customBlocklist || [], "blocklist");
+    }
   });
 
-  modeBlocklistBtn.addEventListener("click", () => {
-    chrome.storage.local.set({ filterMode: "blocklist" }, () => {
-      updateModeUI("blocklist");
-      chrome.storage.local.get(["customBlacklist"], (res) => renderDomainList(res.customBlacklist || []));
+  // Global Mode Radio Listeners
+  if (modeStandardRadio) {
+    modeStandardRadio.addEventListener("change", () => {
+      if (modeStandardRadio.checked) {
+        chrome.storage.local.set({ filterMode: FILTER_MODE_STANDARD, settingsLastUpdated: Date.now() });
+        // Switch back to blocklist view when returning to standard
+        activeListTab = "blocklist";
+        modeBlocklistBtn.classList.add("active");
+        modeApprovedListBtn.classList.remove("active");
+        updateListHeaders("blocklist");
+        chrome.storage.local.get(["customBlocklist"], (res) => renderDomainList(res.customBlocklist || [], "blocklist"));
+      }
     });
-  });
+  }
 
-  modeWhitelistBtn.addEventListener("click", () => {
-    chrome.storage.local.set({ filterMode: "whitelist" }, () => {
-      updateModeUI("whitelist");
-      chrome.storage.local.get(["customWhitelist"], (res) => renderDomainList(res.customWhitelist || []));
+  if (modeStrictRadio) {
+    modeStrictRadio.addEventListener("change", () => {
+      if (modeStrictRadio.checked) {
+        chrome.storage.local.set({ filterMode: FILTER_MODE_STRICT, settingsLastUpdated: Date.now() });
+        // Automatically slide over to approved list view when switching to strict
+        activeListTab = "approved";
+        modeApprovedListBtn.classList.add("active");
+        modeBlocklistBtn.classList.remove("active");
+        updateListHeaders("approved");
+        chrome.storage.local.get(["customApprovedList"], (res) => renderDomainList(res.customApprovedList || [], "approved"));
+      }
     });
-  });
+  }
+
+  // List View Tab Switchers
+  if (modeBlocklistBtn && modeApprovedListBtn) {
+    modeBlocklistBtn.addEventListener("click", () => {
+      activeListTab = "blocklist";
+      modeBlocklistBtn.classList.add("active");
+      modeApprovedListBtn.classList.remove("active");
+      updateListHeaders(activeListTab);
+      chrome.storage.local.get(["customBlocklist"], (res) => renderDomainList(res.customBlocklist || [], activeListTab));
+    });
+
+    modeApprovedListBtn.addEventListener("click", () => {
+      activeListTab = "approved";
+      modeApprovedListBtn.classList.add("active");
+      modeBlocklistBtn.classList.remove("active");
+      updateListHeaders(activeListTab);
+      chrome.storage.local.get(["customApprovedList"], (res) => renderDomainList(res.customApprovedList || [], activeListTab));
+    });
+  }
 
   if (addDomainBtn) {
     addDomainBtn.addEventListener("click", () => {
       const val = domainInput.value.trim().toLowerCase();
       if (!val) return;
 
-      chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist"], (data) => {
-        const mode = data.filterMode || "blocklist";
-        const key = mode === "blocklist" ? "customBlacklist" : "customWhitelist";
+      chrome.storage.local.get(["customBlocklist", "customApprovedList"], (data) => {
+        const key = activeListTab === "blocklist" ? "customBlocklist" : "customApprovedList";
         const list = data[key] || [];
 
         if (!list.includes(val)) {
           list.push(val);
           chrome.storage.local.set({ [key]: list, settingsLastUpdated: Date.now() }, () => {
             domainInput.value = "";
-            renderDomainList(list);
+            renderDomainList(list, activeListTab);
           });
         }
       });
@@ -362,26 +422,20 @@ function loadDomainRules() {
   }
 }
 
-function updateModeUI(mode) {
-  const modeBlocklistBtn = document.getElementById("modeBlocklistBtn");
-  const modeWhitelistBtn = document.getElementById("modeWhitelistBtn");
+function updateListHeaders(tabType) {
   const title = document.getElementById("domainSectionTitle");
   const subtext = document.getElementById("domainSectionSubtext");
 
-  if (mode === "blocklist") {
-    modeBlocklistBtn.classList.add("active");
-    modeWhitelistBtn.classList.remove("active");
-    if (title) title.textContent = "🚫 CUSTOM BLOCKLIST";
+  if (tabType === "blocklist") {
+    if (title) title.textContent = "🚫 BLOCKLIST";
     if (subtext) subtext.textContent = "Explicitly listed domains will be intercepted.";
   } else {
-    modeWhitelistBtn.classList.add("active");
-    modeBlocklistBtn.classList.remove("active");
-    if (title) title.textContent = "✅ CUSTOM WHITELIST";
-    if (subtext) subtext.textContent = "Only explicitly listed domains will be accessible.";
+    if (title) title.textContent = "✅ APPROVED LIST";
+    if (subtext) subtext.textContent = "Sites that always bypass blocklist and keyword filters.";
   }
 }
 
-function renderDomainList(list) {
+function renderDomainList(list, tabType) {
   const domainView = document.getElementById("domainView");
   if (!domainView) return;
 
@@ -400,14 +454,12 @@ function renderDomainList(list) {
     `;
 
     li.querySelector("button").addEventListener("click", () => {
-      chrome.storage.local.get(["filterMode", "customBlacklist", "customWhitelist"], (data) => {
-        const mode = data.filterMode || "blocklist";
-        const key = mode === "blocklist" ? "customBlacklist" : "customWhitelist";
+      const key = tabType === "blocklist" ? "customBlocklist" : "customApprovedList";
+      chrome.storage.local.get([key], (data) => {
         const currentList = data[key] || [];
-
         currentList.splice(idx, 1);
         chrome.storage.local.set({ [key]: currentList, settingsLastUpdated: Date.now() }, () => {
-          renderDomainList(currentList);
+          renderDomainList(currentList, tabType);
         });
       });
     });
