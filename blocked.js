@@ -4,6 +4,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const overridePanel = document.getElementById("overridePanel");
   const pinInput = document.getElementById("pinInput");
   const confirmOverrideBtn = document.getElementById("confirmOverrideBtn");
+  const permanentAddCheckbox = document.getElementById("permanentAddCheckbox");
 
   const scriptureText = document.getElementById("scriptureText");
   const scriptureRef = document.getElementById("scriptureRef");
@@ -11,8 +12,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const userNameEl = document.getElementById("userName");
   const partnerNameEl = document.getElementById("partnerName");
 
+  const targetUrlDisplay = document.getElementById("targetUrlDisplay");
+  const reasonDisplay = document.getElementById("reasonDisplay");
+  const approvedAccordion = document.getElementById("approvedAccordion");
+  const accordionSummaryTitle = document.getElementById("accordionSummaryTitle");
+  const approvedSitesList = document.getElementById("approvedSitesList");
+
   const urlParams = new URLSearchParams(window.location.search);
   const targetUrl = urlParams.get("target") || "https://www.google.com";
+  const reasonParam = urlParams.get("reason") || "domain";
+
+  // Display Target URL
+  if (targetUrlDisplay) {
+    targetUrlDisplay.textContent = targetUrl;
+  }
 
   // 1. KJV Scriptures
   const KJV_SCRIPTURES = [
@@ -26,26 +39,59 @@ document.addEventListener("DOMContentLoaded", () => {
     { text: '"Wherewithal shall a young man cleanse his way? by taking heed thereto according to thy word."', ref: '— Psalm 119:9' }
   ];
 
-  // Random Scripture Selection
   const randomVerse = KJV_SCRIPTURES[Math.floor(Math.random() * KJV_SCRIPTURES.length)];
   if (scriptureText && scriptureRef) {
     scriptureText.textContent = randomVerse.text;
     scriptureRef.textContent = randomVerse.ref;
   }
 
-  // 2. Personalization
+  // 2. Personalization & Storage Fetch (Filter Mode, Names, Approved List)
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(["userFirstName", "partnerFirstName"], (data) => {
+    chrome.storage.local.get(["userFirstName", "partnerFirstName", "filterMode", "customApprovedList"], (data) => {
       if (userNameEl && data.userFirstName) {
         userNameEl.textContent = data.userFirstName;
       }
       if (partnerNameEl && data.partnerFirstName) {
         partnerNameEl.textContent = data.partnerFirstName;
       }
+
+      const isStrict = data.filterMode === "strict";
+
+      // Format Reason Text cleanly
+      if (reasonDisplay) {
+        if (isStrict) {
+          reasonDisplay.textContent = "Strict Mode active (Not on Approved List)";
+        } else if (reasonParam === "keyword") {
+          reasonDisplay.textContent = "Detected restricted keyword match";
+        } else if (reasonParam === "blocklist") {
+          reasonDisplay.textContent = "Matched your Custom Blocklist";
+        } else {
+          reasonDisplay.textContent = "Matched default protection list";
+        }
+      }
+
+      // If Strict Mode, show and populate the Approved Sites Accordion
+      if (isStrict && approvedAccordion && approvedSitesList) {
+        approvedAccordion.classList.remove("hidden");
+        const approvedDomains = data.customApprovedList || [];
+        
+        if (accordionSummaryTitle) {
+          accordionSummaryTitle.textContent = `▼ View Approved Sites (${approvedDomains.length} allowed)`;
+        }
+
+        if (approvedDomains.length > 0) {
+          approvedSitesList.innerHTML = approvedDomains.map(domain => {
+            const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+            return `<li><a href="https://${cleanDomain}" target="_blank">🔗 ${cleanDomain}</a></li>`;
+          }).join('');
+        } else {
+          approvedSitesList.innerHTML = `<li style="color: #64748b; font-style: italic;">No sites currently on Approved List</li>`;
+        }
+      }
     });
   }
 
-  // 3. Direct Navigation to Google
+  // 3. Direct Navigation to Google (Return to Safety)
   if (safetyBtn) {
     safetyBtn.addEventListener("click", () => {
       window.location.href = "https://www.google.com";
@@ -77,8 +123,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function handleOverrideSubmit() {
     const enteredPin = pinInput.value.trim();
+    const isPermanentAdd = permanentAddCheckbox ? permanentAddCheckbox.checked : false;
 
-    chrome.storage.local.get(["userPin", "logBuffer"], (data) => {
+    chrome.storage.local.get(["userPin", "logBuffer", "customApprovedList"], (data) => {
       const storedPin = data.userPin;
 
       if (!storedPin) {
@@ -95,18 +142,37 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         
         bypassUrl.searchParams.set("virtue_bypass", "true");
+        const targetDomain = bypassUrl.hostname.toLowerCase().replace('www.', '');
 
         const buffer = data.logBuffer || [];
+        let logTitle = `[ONE-TIME BYPASS] ${targetUrl}`;
+        let logTypeTag = "PIN_OVERRIDE_TEMPORARY";
+
+        const updates = { logBuffer: buffer };
+
+        // Handle Permanent Approved List Addition if Checked
+        if (isPermanentAdd) {
+          const approvedList = data.customApprovedList || [];
+          if (!approvedList.includes(targetDomain)) {
+            approvedList.push(targetDomain);
+            updates.customApprovedList = approvedList;
+            updates.settingsLastUpdated = Date.now();
+          }
+          logTitle = `[APPROVED LIST ADDITION] ${targetUrl}`;
+          logTypeTag = "PIN_OVERRIDE_APPROVED";
+        }
+
         buffer.push({
-          url: `[OVERRIDE BYPASS] ${targetUrl}`,
-          title: `[OVERRIDE BYPASS] ${targetUrl}`,
+          url: targetUrl,
+          title: logTitle,
           searchQuery: "",
           device: getDeviceInfo(),
           timestamp: new Date().toISOString(),
-          flagged: true
+          flagged: true,
+          overrideType: logTypeTag
         });
 
-        chrome.storage.local.set({ logBuffer: buffer }, () => {
+        chrome.storage.local.set(updates, () => {
           window.location.href = bypassUrl.toString();
         });
       } else {

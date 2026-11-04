@@ -42,8 +42,8 @@
       border-radius: 16px;
       box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
       width: 100%;
-      max-width: 500px;
-      padding: 40px 32px;
+      max-width: 520px;
+      padding: 36px 28px;
       text-align: center;
       border: 1px solid var(--border-color);
     }
@@ -53,18 +53,18 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 12px;
-      margin-bottom: 24px;
+      gap: 10px;
+      margin-bottom: 20px;
     }
 
     .brand-header img {
-      height: 120px;
+      height: 90px;
       width: auto;
       object-fit: contain;
     }
 
     .brand-title {
-      font-size: 1.3rem;
+      font-size: 1.2rem;
       font-weight: 800;
       letter-spacing: 0.08em;
       color: var(--accent-color);
@@ -73,33 +73,104 @@
     .scripture-card {
       background: #f1f5f9;
       border-left: 4px solid var(--accent-color);
-      padding: 16px;
+      padding: 14px 16px;
       border-radius: 8px;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
       text-align: left;
-      min-height: 90px;
     }
 
     .scripture-text {
-      font-size: 0.98rem;
+      font-size: 0.95rem;
       font-style: italic;
       color: #334155;
-      line-height: 1.5;
-      margin-bottom: 8px;
+      line-height: 1.45;
+      margin-bottom: 6px;
     }
 
     .scripture-ref {
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       font-weight: 600;
       color: var(--text-muted);
       text-align: right;
     }
 
     .message {
-      font-size: 0.98rem;
+      font-size: 0.95rem;
       color: var(--text-muted);
-      line-height: 1.5;
-      margin-bottom: 28px;
+      line-height: 1.45;
+      margin-bottom: 20px;
+    }
+
+    .reason-box {
+      background: #f8fafc;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      text-align: left;
+      font-size: 0.88rem;
+    }
+
+    .reason-box strong {
+      color: var(--text-main);
+    }
+
+    .reason-detail {
+      color: var(--text-muted);
+      margin-top: 2px;
+      word-break: break-all;
+      font-family: monospace;
+      font-size: 0.82rem;
+    }
+
+    /* Accordion for Strict Mode Approved Sites */
+    .approved-accordion {
+      margin-bottom: 20px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      text-align: left;
+      overflow: hidden;
+      background: #ffffff;
+    }
+
+    .approved-accordion summary {
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--accent-color);
+      cursor: pointer;
+      background: #f8fafc;
+      user-select: none;
+    }
+
+    .approved-accordion summary:hover {
+      background: #f1f5f9;
+    }
+
+    .approved-list-content {
+      max-height: 140px;
+      overflow-y: auto;
+      padding: 8px 14px;
+      border-top: 1px solid var(--border-color);
+      font-size: 0.83rem;
+    }
+
+    .approved-list-content ul {
+      padding-left: 16px;
+      margin: 0;
+    }
+
+    .approved-list-content li {
+      margin-bottom: 4px;
+    }
+
+    .approved-list-content a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+
+    .approved-list-content a:hover {
+      text-decoration: underline;
     }
 
     .btn-safety {
@@ -121,7 +192,7 @@
 
     .override-link {
       display: inline-block;
-      margin-top: 18px;
+      margin-top: 16px;
       font-size: 0.85rem;
       color: var(--text-muted);
       text-decoration: underline;
@@ -133,9 +204,10 @@
     }
 
     .pin-box {
-      margin-top: 20px;
-      padding-top: 20px;
+      margin-top: 18px;
+      padding-top: 18px;
       border-top: 1px dashed var(--border-color);
+      text-align: left;
     }
 
     .warning-box {
@@ -144,21 +216,20 @@
       color: var(--warning-text);
       padding: 12px;
       border-radius: 8px;
-      font-size: 0.85rem;
+      font-size: 0.83rem;
       line-height: 1.4;
-      margin-bottom: 16px;
-      text-align: left;
+      margin-bottom: 14px;
     }
 
-    .pin-input-group {
+    .pin-controls {
       display: flex;
-      justify-content: center;
       gap: 10px;
+      align-items: center;
       margin-bottom: 12px;
     }
 
     input[type="password"] {
-      width: 130px;
+      width: 120px;
       padding: 10px;
       font-size: 1.1rem;
       text-align: center;
@@ -176,15 +247,31 @@
       background-color: var(--danger-color);
       color: white;
       border: none;
-      padding: 10px 18px;
-      font-size: 0.9rem;
+      padding: 10px 16px;
+      font-size: 0.88rem;
       font-weight: 600;
       border-radius: 8px;
       cursor: pointer;
+      flex-grow: 1;
     }
 
     .btn-override:hover {
       background-color: var(--danger-hover);
+    }
+
+    .checkbox-container {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 0.83rem;
+      color: var(--text-main);
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    .checkbox-container input {
+      margin-top: 2px;
+      cursor: pointer;
     }
 
     .forgot-pin-link {
@@ -193,7 +280,7 @@
       color: var(--text-muted);
       text-decoration: underline;
       cursor: pointer;
-      margin-top: 4px;
+      margin-top: 8px;
     }
 
     .forgot-pin-link:hover {
@@ -204,8 +291,8 @@
       font-size: 11px;
       color: #cbd5e1;
       border-top: 1px solid #f1f5f9;
-      padding-top: 16px;
-      margin-top: 28px;
+      padding-top: 14px;
+      margin-top: 24px;
       text-transform: uppercase;
       letter-spacing: 1px;
     }
@@ -233,20 +320,42 @@
       This site was paused to help you stay on the path.
     </p>
 
+    <!-- Reason & Target Display -->
+    <div class="reason-box">
+      <div><strong>Blocked Site:</strong></div>
+      <div class="reason-detail" id="targetUrlDisplay">loading...</div>
+      <div style="margin-top: 6px;"><strong>Reason:</strong> <span id="reasonDisplay">Custom Blocklist Rule</span></div>
+    </div>
+
+    <!-- Strict Mode Approved Sites Accordion (Hidden by default, shown if strict mode active) -->
+    <details class="approved-accordion hidden" id="approvedAccordion">
+      <summary id="accordionSummaryTitle">▼ View Approved Sites (0 allowed)</summary>
+      <div class="approved-list-content">
+        <ul id="approvedSitesList">
+          <!-- Populated dynamically -->
+        </ul>
+      </div>
+    </details>
+
     <button class="btn-safety" id="safetyBtn">↩️ Return to Safety</button>
 
     <a class="override-link" id="revealOverrideLink">I need to proceed anyway</a>
 
     <div class="pin-box hidden" id="overridePanel">
       <div class="warning-box">
-        ⚠️ <strong>Need to view this page anyway?</strong><br>
-        Entering your PIN will unblock this site and log an overridden alert on the report sent to <span id="partnerName">your partner</span>.
+        ⚠️ <strong>Intentional Bypass & Accountability Notice:</strong><br>
+        Entering your PIN will override this block and log this event to the weekly report sent to <span id="partnerName">your partner</span>.
       </div>
 
-      <div class="pin-input-group">
+      <div class="pin-controls">
         <input type="password" id="pinInput" maxlength="4" placeholder="••••" inputmode="numeric">
-        <button class="btn-override" id="confirmOverrideBtn">Confirm</button>
+        <button class="btn-override" id="confirmOverrideBtn">Unlock & Proceed</button>
       </div>
+
+      <label class="checkbox-container">
+        <input type="checkbox" id="permanentAddCheckbox">
+        <span>Permanently add this site to my Approved List</span>
+      </label>
 
       <div>
         <a class="forgot-pin-link" id="forgotPinLink">Forgot PIN?</a>
@@ -256,7 +365,6 @@
     <div class="footer">Virtue Accountability Engine</div>
   </div>
 
-  <!-- Separate JS file to satisfy Manifest V3 CSP -->
   <script src="blocked.js"></script>
 </body>
 </html>
