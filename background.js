@@ -777,8 +777,49 @@ async function dispatchReportSnapshot(profileData, options = {}) {
 }
 
 // ==========================================
-// 3. ID-ANCHORED ROOT SYNC ENGINE
+// 3. ID-ANCHORED ROOT SYNC ENGINE & AUTO-DISCOVERY
 // ==========================================
+async function findAndValidateExistingDriveFile(token) {
+  try {
+    const query = encodeURIComponent(`name = '${VIRTUE_CONFIG.FILE_NAME}' and trashed = false`);
+    const res = await fetchWithBackoff(`https://www.googleapis.com/drive/v3/files?q=${query}&spaces=drive&fields=files(id,name,createdTime)`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const files = data.files || [];
+    
+    if (files.length === 0) return null;
+
+    // Sort by newest first if multiple files exist
+    files.sort((a, b) => new Date(b.createdTime) - new Date(a.createdTime));
+
+    // Test decryption for candidate files to ensure cryptographic ownership
+    const { key } = await getActiveEncryptionKey();
+
+    for (const file of files) {
+      try {
+        const fileRes = await authenticatedFetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`);
+        if (!fileRes.ok) continue;
+        const fileData = await fileRes.json();
+
+        // Verify we can successfully decrypt it with our current PIN/email key
+        if (fileData.encryptedData && fileData.iv) {
+          await decryptData(fileData.encryptedData, fileData.iv, key);
+        }
+        
+        console.log(`🔐 Successfully validated and decrypted existing vault file: ${file.id}`);
+        return file.id;
+      } catch (decErr) {
+        console.warn(`⚠️ Found file ${file.id} in Drive, but decryption failed (wrong PIN/email or incompatible data). Skipping...`);
+      }
+    }
+  } catch (err) {
+    console.warn("Drive search & validation exception:", err);
+  }
+  return null;
+}
+
 function flushBufferToDriveJson() {
   if (isNonChromeChromium) return;
   chrome.storage.local.get({ logBuffer: [], driveFileId: "" }, async (res) => {
@@ -791,7 +832,16 @@ function flushBufferToDriveJson() {
         await new Promise((resolve, reject) => {
           fetchNewToken(false, async (token) => {
             try {
-              fileId = await createBrandNewRootDriveFile(token);
+              // 1. AUTO-DISCOVERY & CRYPTOGRAPHIC VALIDATION
+              fileId = await findAndValidateExistingDriveFile(token);
+              
+              if (fileId) {
+                await chrome.storage.local.set({ driveFileId: fileId });
+                console.log(`🔗 Adopted validated Google Drive vault file ID: ${fileId}`);
+              } else {
+                // 2. Fallback: Create a brand new file ONLY if no valid decrypted file exists
+                fileId = await createBrandNewRootDriveFile(token);
+              }
               resolve();
             } catch (err) { reject(err); }
           }, reject);
@@ -805,9 +855,15 @@ function flushBufferToDriveJson() {
           await new Promise((resolve, reject) => {
             fetchNewToken(false, async (token) => {
               try {
-                const newFileId = await createBrandNewRootDriveFile(token);
-                await notifyPartnerLogReset(newFileId, buffer);
-                await performDriveUploadCycle(newFileId, buffer);
+                // Re-attempt auto-discovery before creating a fresh one during 404 recovery
+                let recoveredFileId = await findAndValidateExistingDriveFile(token);
+                if (!recoveredFileId) {
+                  recoveredFileId = await createBrandNewRootDriveFile(token);
+                  await notifyPartnerLogReset(recoveredFileId, buffer);
+                } else {
+                  await chrome.storage.local.set({ driveFileId: recoveredFileId });
+                }
+                await performDriveUploadCycle(recoveredFileId, buffer);
                 resolve();
               } catch (e) { reject(e); }
             }, reject);
@@ -1250,3 +1306,4 @@ globalThis.flushBufferToDriveJson = flushBufferToDriveJson;
 globalThis.reconcilePartnerPermissions = reconcilePartnerPermissions;
 globalThis.createBrandNewRootDriveFile = createBrandNewRootDriveFile;
 globalThis.fetchWithBackoff = fetchWithBackoff;
+globalThis.findAndValidateExistingDriveFile = findAndValidateExistingDriveFile;
