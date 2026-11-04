@@ -76,7 +76,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const approvedDomains = data.customApprovedList || [];
         
         if (accordionSummaryTitle) {
-          accordionSummaryTitle.textContent = `▼ View Approved Sites (${approvedDomains.length} allowed)`;
+          accordionSummaryTitle.textContent = `View Approved Sites (${approvedDomains.length} allowed)`;
         }
 
         if (approvedDomains.length > 0) {
@@ -91,10 +91,15 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 3. Direct Navigation to Google (Return to Safety)
+  // 3. Leave This Page (Close Tab & Fallback)
   if (safetyBtn) {
     safetyBtn.addEventListener("click", () => {
-      window.location.href = "https://www.google.com";
+      window.close();
+      
+      // Fallback if browser security prevents closing programmatically
+      setTimeout(() => {
+        window.location.href = "about:blank";
+      }, 100);
     });
   }
 
